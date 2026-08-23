@@ -1,0 +1,7 @@
+{
+  "source": "HADCO (Al-Suhaibani & Wahby)",
+  "n_work_orders": 1670,
+  "repair_share_empirical": 0.5419161676646707,
+  "severity_model_r2": 0.9748754638716131,
+  "power_effect_on_cost": 0.006245594578862078
+}

@@ -1,0 +1,23 @@
+{
+  "version": "2.0",
+  "description": "Calibration configuration for CF-Cox model. WARNING: baseline_hazard and censoring_scale here represent INITIAL uncalibrated values. For production use, read from model_params.training_meta which contains the FINAL calibrated values.",
+  "git_commit": null,
+  "seed": 12345,
+  "target_event_rate": 0.3,
+  "achieved_event_rate": 0.2935,
+  "n_calib": 10000,
+  "calibration_status": "deprecated",
+  "calibration_note": "These values are from an initial calibration run. The model_params.json.training_meta contains the final calibrated baseline_hazard=0.0004923 and censoring_scale=649.38... which should be used for prediction.",
+  "censoring_scale": 649.3816,
+  "initial_baseline_hazard": 0.05,
+  "final_baseline_hazard": 0.003414548873833601,
+  "final_censoring_scale": 98.21718891880377,
+  "model_params_ref": "model_params.json",
+  "dgp": {
+    "gamma": 0.5,
+    "beta_x": 0.3,
+    "rho": 0.7,
+    "delta": 0.7,
+    "first_stage_z_coef": 0.5
+  }
+}

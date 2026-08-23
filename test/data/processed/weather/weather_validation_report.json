@@ -1,0 +1,16 @@
+{
+  "phase": "6.6",
+  "status": "FAIL",
+  "raw_data": {
+    "path": "data\\raw\\weather\\nasa_power_daily.csv",
+    "exists": false
+  },
+  "weather_windows": {
+    "path": "data\\processed\\weather\\weather_windows.csv",
+    "exists": false
+  },
+  "errors": [
+    "Raw weather file not found: data\\raw\\weather\\nasa_power_daily.csv",
+    "Weather windows file not found: data\\processed\\weather\\weather_windows.csv"
+  ]
+}

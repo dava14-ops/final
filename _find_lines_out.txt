@@ -1,0 +1,1 @@
+import os; f=open(os.path.join(r'C:\workspace','Итог.py'),'r',encoding='utf-8');lines=f.readlines();f.close();[print(i+1,l.strip()) for i,l in enumerate(lines) if 'def validate_simulation_config' in l or 'def _validate_dgp' in l or 'def _get_cox_log_likelihood' in l or 'def _scalar_from_array' in l]  

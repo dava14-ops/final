@@ -1,0 +1,82 @@
+{
+  "source": "Zetor (Durczak et al., 2018)",
+  "n_tractors": 70,
+  "n_events": 70,
+  "n_censored": 0,
+  "event_rate": 1.0,
+  "mttf_empirical": 275.8093416280647,
+  "median_time": 244.36630778023977,
+  "time_range": [
+    48.36545840930424,
+    711.828766103821
+  ],
+  "empirical_survival_at_time_points": {
+    "100": 0.8857142857142857,
+    "200": 0.6285714285714286,
+    "300": 0.38571428571428573,
+    "400": 0.24285714285714285,
+    "500": 0.07142857142857142,
+    "600": 0.02857142857142857
+  },
+  "parametric_fits": {
+    "weibull": {
+      "aic": 895.2035416394052,
+      "log_likelihood": -445.6017708197026,
+      "n_params": 2,
+      "params": {
+        "shape_rho": 1.9145495630459521,
+        "scale_lambda": 311.6413980360717,
+        "mttf": 514.6899880602234
+      },
+      "converged": true
+    },
+    "exponential": {
+      "aic": 928.7593770131637,
+      "log_likelihood": -463.37968850658183,
+      "n_params": 1,
+      "params": {
+        "lambda": 275.80937527581057,
+        "mttf": 0.003625692560305449
+      },
+      "converged": true
+    },
+    "lognormal": {
+      "aic": 901.2598198364487,
+      "log_likelihood": -448.62990991822437,
+      "n_params": 2,
+      "params": {
+        "mu": 5.442936705226284,
+        "sigma": 0.6357940965355878
+      },
+      "converged": true
+    },
+    "loglogistic": {
+      "aic": 903.157794811742,
+      "log_likelihood": -449.578897405871,
+      "n_params": 2,
+      "params": {
+        "alpha": 241.21453834997612,
+        "beta": 2.732398062078044
+      },
+      "converged": true
+    }
+  },
+  "best_model_by_aic": "weibull",
+  "dgp_comparison": {
+    "dgp_weibull_shape": 1.88,
+    "dgp_mtbf_baseline_hours": 1500.0,
+    "dgp_baseline_hazard": 0.0006666666666666666,
+    "zetor_mttf_empirical": 275.8093416280647,
+    "zetor_published_mttf": 271.0,
+    "zetor_weibull_shape": 1.9145495630459521,
+    "shape_deviation_pct": 1.837742715210226,
+    "shape_match": true,
+    "mttf_to_mtbf_ratio": 0.1838728944187098,
+    "mttf_mtbf_ratio_plausible": true
+  },
+  "conclusions": [
+    "[OK] Weibull shape совпадает: Zetor=1.91, DGP=1.88 (отклонение 1.8%). DGP baseline реалистичен по форме.",
+    "[OK] MTTF/MTBF ratio = 0.184 в правдоподобном диапазоне [0.1, 0.6]. Zetor MTTF=276 mth, DGP MTBF=1500 h.",
+    "[OK] Лучшая параметрическая модель по AIC: weibull (AIC=895.20)."
+  ]
+}
