@@ -4211,9 +4211,21 @@ def fit_cf_cox(
 
 
     covariate_cols_before_cf = ["PeakLoad"] + x_cols
-
-
     _validate_survival_frame(model_data, covariate_cols_before_cf)
+    
+    # ─── ФИЛЬТРАЦИЯ КОЛОНОК С НУЛЕВОЙ ДИСПЕРСИЕЙ ───────────────────────
+    # Это предотвращает баги lifelines и ошибки неоднозначности массивов
+    valid_x_cols = []
+    for c in x_cols:
+        if model_data[c].std() > 1e-12:
+            valid_x_cols.append(c)
+        else:
+            logger.warning(f"Column {c} has zero variance, removing from model.")
+    x_cols = valid_x_cols
+    
+    if model_data["PeakLoad"].std() <= 1e-12:
+        raise RuntimeError("CF Cox: PeakLoad has zero variance")
+    # ───────────────────────────────────────────────────────────────────
 
     cf_cols = _build_cf_columns(
         residuals=residuals,
@@ -4223,7 +4235,18 @@ def fit_cf_cox(
     )
     model_data = cf_cols.df_with_cf
     v_hat_cols = cf_cols.column_names
-
+    
+    # Фильтрация CF колонок с нулевой дисперсией
+    valid_v_hat_cols = []
+    for c in v_hat_cols:
+        if model_data[c].std() > 1e-12:
+            valid_v_hat_cols.append(c)
+        else:
+            logger.warning(f"CF column {c} has zero variance, removing from model.")
+    v_hat_cols = valid_v_hat_cols
+    
+    if not v_hat_cols:
+        raise ValueError("fit_cf_cox: all CF columns have zero variance")
 
     if not v_hat_cols:
         raise ValueError("fit_cf_cox: no CF columns created")
@@ -4297,6 +4320,15 @@ def fit_cf_cox(
                 cluster_col=opts.cluster_col,
             )
 
+            # ─── БЕЗОПАСНОЕ ИЗВЛЕЧЕНИЕ КОЭФФИЦИЕНТОВ ───────────────────────
+            # Используем фильтрацию по индексу вместо .loc[], чтобы избежать 
+            # ValueError при дублирующихся индексах или возврате массивов
+            def _safe_extract(series, key):
+                vals = series[series.index == key]
+                if len(vals) == 0:
+                    raise RuntimeError(f"Key '{key}' not found in model params")
+                return float(vals.iloc[0])
+
             params_index = list(cph.params_.index)
 
             if "PeakLoad" not in params_index:
@@ -4312,16 +4344,17 @@ def fit_cf_cox(
             if missing_vc is not None:
                 raise RuntimeError(f"CF Cox: no '{missing_vc}' coefficient")
 
-            gamma_hat = float(cph.params_.loc["PeakLoad"])
-            naive_model_se = float(cph.standard_errors_.loc["PeakLoad"])
-
+            gamma_hat = _safe_extract(cph.params_, "PeakLoad")
+            naive_model_se = _safe_extract(cph.standard_errors_, "PeakLoad")
+            
             if len(v_hat_cols) > 1:
-                v_hat_coefs = [float(cph.params_.loc[vc]) for vc in v_hat_cols]
+                v_hat_coefs = [_safe_extract(cph.params_, vc) for vc in v_hat_cols]
                 cf_coef = float(np.sqrt(sum(c * c for c in v_hat_coefs)))
                 cf_coef_signed = float(np.mean(v_hat_coefs))
             else:
-                cf_coef = float(cph.params_.loc[v_hat_cols[0]])
+                cf_coef = _safe_extract(cph.params_, v_hat_cols[0])
                 cf_coef_signed = cf_coef
+            # ───────────────────────────────────────────────────────────────
 
             ses_all = cph.standard_errors_.to_numpy(dtype=float)
             max_se = float(np.max(np.abs(ses_all)))
