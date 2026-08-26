@@ -337,16 +337,16 @@ class FirstStageFit:
 
 @dataclass
 class CFModelResult:
-    gamma_hat: float
-    naive_model_se: float
-    bootstrap_se: Optional[float]
-    se_type: str
-    cf_coef: float
-    cf_coef_signed: Optional[float]
-    cph: CoxPHFitter
-    max_se: float
-    penalizer: float
-    is_penalized: bool
+    gamma_hat: float = float('nan')
+    naive_model_se: float = float('nan')
+    bootstrap_se: Optional[float] = None
+    se_type: str = "naive"
+    cf_coef: float = float('nan')
+    cf_coef_signed: Optional[float] = None
+    cph: Optional[CoxPHFitter] = None
+    max_se: float = float('nan')
+    penalizer: float = 0.0
+    is_penalized: bool = False
     convergence_info: Optional[ConvergenceInfo] = None
     warnings: List[str] = field(default_factory=list)
     n: Optional[int] = None
@@ -2790,15 +2790,32 @@ def fit_cf_cox_on_claims(
         cph.fit(cox_data, duration_col="time", event_col="event")
 
     # Собрать результат
-    class CFModelResult:
-        pass
-
     cf = CFModelResult()
     cf.cph = cph
     cf.residuals = residuals
     cf.cf_basis = v_hat_basis
     cf.cf_basis_params = v_hat_basis_params or {}
     cf.warnings = []
+    
+    # --- ИЗВЛЕЧЕНИЕ GAMMA_HAT И СТАНДАРТНЫХ ОШИБОК ---
+    # Ищем колонку контрольной функции (обычно 'v_hat' или начинается с 'v_hat')
+    cf_cols = [c for c in cph.params_.index if c == "v_hat" or c.startswith("v_hat") or c == "cf"]
+    cf_col = cf_cols[0] if cf_cols else "v_hat"
+    
+    if cf_col in cph.params_.index:
+        cf.gamma_hat = float(cph.params_[cf_col])
+        cf.cf_coef_signed = cf.gamma_hat
+        cf.cf_coef = cf.gamma_hat
+        try:
+            # В lifelines стандартная ошибка хранится в summary
+            cf.naive_model_se = float(cph.summary.loc[cf_col, "se(coef)"])
+        except Exception:
+            cf.naive_model_se = np.nan
+    else:
+        cf.gamma_hat = np.nan
+        cf.naive_model_se = np.nan
+        cf.cf_coef_signed = np.nan
+        cf.cf_coef = np.nan
 
     logger.info(
         "CF Cox на claims обучен: %d ковариат, %d событий",
@@ -3832,6 +3849,7 @@ def _fit_cox_model(
         The column is NOT included as a regressor.
         Fail-closed: if cluster_col is requested but missing, raises ValueError.
     """
+    import sys
     subset = ["time", "event"] + list(covariate_cols)
 
     # ─── Cluster-robust: добавить cluster_col в subset, НЕ в регрессоры ───
@@ -3872,7 +3890,10 @@ def _fit_cox_model(
                 df[cluster_col].nunique(),
             )
 
-        cph.fit(df, **fit_kwargs)
+        try:
+            cph.fit(df, **fit_kwargs)
+        except Exception as fit_exc:
+            raise
 
     warn_summary = _summarize_warnings(caught_warnings)
     if warn_summary:
@@ -4135,6 +4156,7 @@ def fit_cf_cox(
                 partial_f_z,
             )
 
+
     if first_stage.report.weak_instrument and opts.fail_on_weak_instrument:
         raise RuntimeError(
             "Weak instrument detected in first stage. "
@@ -4149,6 +4171,7 @@ def fit_cf_cox(
     if not np.all(np.isfinite(residuals)):
         raise ValueError("Residuals contain NaN or Inf.")
 
+
     model_data = data[["time", "event", "PeakLoad"]].copy()
     original_peakload = data["PeakLoad"].astype(float).to_numpy()
 
@@ -4159,6 +4182,7 @@ def fit_cf_cox(
         brand_encoding=opts.brand_encoding,
         brand_reference_code=opts.brand_reference_code,
     )
+
 
     # ─── P0-6: копируем cluster_id в model_data для cluster-robust Cox ──
     # Fail-closed: если cluster_col явно запрошен, но отсутствует в data,
@@ -4176,6 +4200,7 @@ def fit_cf_cox(
             )
         model_data[opts.cluster_col] = data[opts.cluster_col].to_numpy()
 
+
     if opts.center_peakload is not None:
         cp = float(opts.center_peakload)
 
@@ -4184,7 +4209,9 @@ def fit_cf_cox(
 
         model_data["PeakLoad"] = model_data["PeakLoad"] - cp
 
+
     covariate_cols_before_cf = ["PeakLoad"] + x_cols
+
 
     _validate_survival_frame(model_data, covariate_cols_before_cf)
 
@@ -4197,6 +4224,7 @@ def fit_cf_cox(
     model_data = cf_cols.df_with_cf
     v_hat_cols = cf_cols.column_names
 
+
     if not v_hat_cols:
         raise ValueError("fit_cf_cox: no CF columns created")
 
@@ -4204,6 +4232,7 @@ def fit_cf_cox(
 
     n_events = int(np.sum(model_data["event"].astype(int).to_numpy()))
     n = len(model_data)
+
     min_events = _min_events_required_from_count(len(covariate_cols), opts)
 
     if n_events < min_events:
@@ -4211,8 +4240,10 @@ def fit_cf_cox(
 
     # Исключаем cluster_col из проверки: он может содержать строковые метки
     _check_cols = [c for c in model_data.columns if c != opts.cluster_col]
+
     if not np.all(np.isfinite(model_data[_check_cols].to_numpy(dtype=float))):
         raise ValueError("fit_cf_cox: non-finite data after CF construction")
+
 
     # Partial-out diagnostic: PL_hat ~ X + Z
     pl_hat = original_peakload - residuals
@@ -4220,7 +4251,9 @@ def fit_cf_cox(
     if not np.all(np.isfinite(pl_hat)):
         raise ValueError("fit_cf_cox: non-finite PL_hat")
 
+
     training_pl_hat_mean = float(np.mean(pl_hat))
+
     partial_out_all_betas: Dict[str, float] = {}
     training_x_means: Dict[str, float] = {}
 
@@ -4243,6 +4276,7 @@ def fit_cf_cox(
                 str(col): float(diag_df[col].mean()) for col in diag_df.columns
             }
 
+
         except Exception:
             partial_out_all_betas = {}
             training_x_means = {}
@@ -4250,7 +4284,6 @@ def fit_cf_cox(
     # Cox fit with penalizer fallback
     attempted_penalizers: List[float] = []
     last_exc: Optional[BaseException] = None
-
     for pen in _ALL_PENALIZERS:
         attempted_penalizers.append(float(pen))
 
@@ -4293,6 +4326,10 @@ def fit_cf_cox(
             ses_all = cph.standard_errors_.to_numpy(dtype=float)
             max_se = float(np.max(np.abs(ses_all)))
 
+            # Debug: check types
+            import sys
+
+
             if not all(
                 np.isfinite(x) for x in [gamma_hat, naive_model_se, cf_coef, max_se]
             ):
@@ -4300,6 +4337,7 @@ def fit_cf_cox(
 
             if max_se > opts.cox_se_threshold:
                 raise RuntimeError(f"CF Cox: too-large max_se={max_se}")
+
 
             convergence_info = ConvergenceInfo(
                 penalizer=float(pen),
