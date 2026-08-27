@@ -92,8 +92,9 @@ def _get_scipy_stats():
 
 
 # ─── Bootstrap parallelism ──────────────────────────────────────────
+# REDUCED to prevent OOM with nested joblib (external MC sims × internal bootstrap)
 _n_cpus = os.cpu_count() or 1
-_bootstrap_jobs = min(8, max(1, _n_cpus - 2))  # Оставляем 2 ядра для ОС
+_bootstrap_jobs = min(2, max(1, _n_cpus // 4))  # Conservative: prevents OOM crashes
 
 logger = logging.getLogger(__name__)
 
@@ -657,6 +658,7 @@ def fit_options_from_config(config: SimulationConfig) -> CFFitOptions:
         min_cox_events=config.min_cox_events,
         min_events_per_covariate=config.min_events_per_covariate,
         save_tracebacks=config.save_tracebacks,
+        n_bootstrap=config.n_bootstrap,  # Propagate n_bootstrap to workers
     )
 
 
@@ -2252,14 +2254,17 @@ def generate_data(
     else:
         raise ValueError("Invalid brand_encoding after DGP validation")
 
-    # PATCH-04: Clip PeakLoad к [0, 1] после всех бренд-добавок
-    n_clipped = int(((peak_load < 0.0) | (peak_load > 1.0)).sum())
-    if n_clipped > 0:
+    # PATCH-04: Transform PeakLogit to (0, 1) using sigmoid instead of hard clipping
+    # Hard clipping creates Tobit-like censoring that breaks OLS assumptions in first stage.
+    # Sigmoid transformation preserves continuity and differentiability.
+    n_clipped_before = int(((peak_load < 0.0) | (peak_load > 1.0)).sum())
+    if n_clipped_before > 0:
         logger.warning(
-            "PeakLoad клипнут к [0,1] для %d/%d наблюдений (%.1f%%)",
-            n_clipped, n, 100*n_clipped/n,
+            "PeakLoad transformed via sigmoid for %d/%d observations (%.1f%%) to avoid Tobit censoring bias",
+            n_clipped_before, n, 100*n_clipped_before/n,
         )
-    peak_load = np.clip(peak_load, 0.0, 1.0)
+    # Apply sigmoid with clipping to prevent overflow: sigma(x) = 1/(1+exp(-x))
+    peak_load = 1.0 / (1.0 + np.exp(-np.clip(peak_load, -10.0, 10.0)))
 
     # ─── Построение linear predictor ────────────────────────────────────
     lp_raw = (
@@ -5302,6 +5307,12 @@ def _worker_case(
     idx = rng.integers(0, n, size=n)
     bdata = data.iloc[idx].reset_index(drop=True)
 
+    # NEW PROTECTION: Check for degenerate bootstrap samples
+    if bdata["PeakLoad"].std() < 1e-6:
+        return np.nan, "degenerate_peakload_in_bootstrap"
+    if bdata["Z"].std() < 1e-6:
+        return np.nan, "degenerate_Z_in_bootstrap"
+
     if np.var(bdata["Z"].to_numpy(), ddof=0) < config.var_z_threshold:
         return np.nan, "var_z_too_small"
 
@@ -5642,6 +5653,11 @@ def bootstrap_cf_standard_error(
     high_failure_rate = failure_rate > config.max_failure_rate
 
     if n_successful < required_min_success or n_successful <= 1 or high_failure_rate:
+        logger.error(
+            "Bootstrap failed. Success rate: %.2f%%. Rejection reasons: %s",
+            success_rate * 100,
+            reason_summary  # Shows why iterations fail (degenerate samples, OOM, etc.)
+        )
         return BootstrapResult(
             bootstrap_se=None,
             n_successful=n_successful,
