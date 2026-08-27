@@ -2599,13 +2599,30 @@ def _build_powers_basis(params: Any, raw_residuals: np.ndarray) -> Dict[str, np.
     result: Dict[str, np.ndarray] = {}
     clip_powers = _as_bool(_dict_get_normalized(meta, "clip_powers", True), True)
 
+    # PATCH-01: Apply SVD projection if available from training
+    proj_raw = _dict_get_normalized(meta, "projection_matrix")
+    proj_matrix = None
+    if proj_raw is not None:
+        try:
+            proj_matrix = np.array(proj_raw, dtype=np.float64)
+        except (ValueError, TypeError):
+            logger.warning("projection_matrix in metadata is invalid; ignoring.")
+            proj_matrix = None
+
     for p in range(1, max_power + 1):
         if p - 1 < len(cf_cols):
             name = cf_cols[p - 1]
         else:
             name = f"v_hat_pow{p}"
 
-        values = v_safe ** p
+        if proj_matrix is not None and p <= proj_matrix.shape[0]:
+            # Use projected basis from training
+            raw_matrix = np.column_stack([v_safe**i for i in range(1, max_power + 1)])
+            projected = raw_matrix @ proj_matrix
+            values = projected[:, p - 1]
+        else:
+            values = v_safe ** p
+        
         values = _standardize_cf_array(name, values, std_params)
 
         if clip_powers:
@@ -2787,6 +2804,17 @@ def _build_spline_basis(params: Any, raw_residuals: np.ndarray) -> Dict[str, np.
 
     if basis_matrix.ndim != 2 or basis_matrix.shape[1] == 0:
         raise PredictionError("Spline CF basis evaluation produced invalid matrix")
+
+    # PATCH-01: Apply SVD projection for spline basis if available
+    proj_raw = _dict_get_normalized(meta, "projection_matrix")
+    if proj_raw is not None:
+        try:
+            proj_matrix = np.array(proj_raw, dtype=np.float64)
+            if proj_matrix.shape[0] == basis_matrix.shape[1]:
+                basis_matrix = basis_matrix @ proj_matrix
+                logger.info("Applied SVD projection to spline CF basis")
+        except (ValueError, TypeError) as e:
+            logger.warning("projection_matrix for spline basis is invalid; ignoring: %s", e)
 
     basis_out = basis_matrix[:, indices]
 
@@ -3103,6 +3131,12 @@ def _cox_linear_predictor_details(
 
     if convention == "pl_hat_exog":
         d_cox = pl_hat_exog
+        # PATCH-08: В режиме 2SLS CF-коррекция НЕ нужна (двойная корректировка)
+        for nm in list(cf_basis_values.keys()):
+            cf_basis_values[nm] = np.array([0.0])
+        logger.warning(
+            "pl_hat_exog convention: CF correction disabled (2SLS mode)"
+        )
     else:
         d_cox = peak_transformed
 

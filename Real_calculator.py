@@ -3030,6 +3030,14 @@ def compute_all_peaks(
     P(cause=k|X) is computed via logistic regression:
     logit(P(major|X)) = alpha + beta_peak * PeakLoad + beta_age * Age + beta_hours * Hours
     """
+    # PATCH-06: Проверка exclusion restriction перед расчётом
+    placebo = placebo_test_exclusion_restriction(params)
+    if placebo.get("exclusion_valid") is None:
+        logger.warning(
+            "⚠️ Exclusion restriction НЕ проверена. "
+            "Результаты имеют предсказательный, а не каузальный характер."
+        )
+    
     results: List[Dict[str, Any]] = []
 
     # ★ НОВОЕ: Если выбрана конкретная операция — добавить её PeakLoad

@@ -8,7 +8,18 @@ from prediction_engine import (
     _resolve_covariate_value,
 )
 
-model = load_model_params("model_params.json")
+# PATCH-09: Ленивая загрузка модели вместо module-level импорта
+_model_cache = None
+
+def get_model():
+    """Вернуть кэшированную модель, загрузив её при первом вызове."""
+    global _model_cache
+    if _model_cache is None:
+        _model_cache = load_model_params("model_params.json")
+    return _model_cache
+
+# Для обратной совместимости сохраняем переменную model, но загружаем лениво
+model = get_model()
 
 # Те же ковариаты, что ввёл калькулятор (МТЗ-82, 10 лет, 1000 мч, 80 л.с.)
 covariates = {

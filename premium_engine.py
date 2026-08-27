@@ -267,6 +267,63 @@ def _scale_probability_to_horizon(
     return float(min(1.0, max(0.0, scaled_probability)))
 
 
+def _covered_loss_lognormal(
+    mu: float,
+    sigma: float,
+    deductible: float = 0.0,
+    limit: Optional[float] = None,
+) -> float:
+    """
+    PATCH-02: E[max(0, min(X, limit) - d)] for X ~ Lognormal(mu, sigma).
+    
+    Uses analytical formula for LogNormal distribution:
+    E[(X - d)+] = E[X·1{X>d}] - d·P(X>d)
+                = exp(μ + σ²/2) · Φ(σ - z_d) - d · Φ(-z_d)
+    where z_d = (ln(d) - μ) / σ
+    
+    For limited loss with limit L:
+    E[min(X, L) - d]+ = E[(X - d)+] - E[(X - L)+]
+    """
+    if sigma <= 0:
+        # Degenerate case: treat as point mass at exp(mu)
+        expected = math.exp(mu)
+        covered = max(0.0, expected - deductible)
+        if limit is not None and limit > 0:
+            covered = min(covered, max(0.0, limit - deductible))
+        return covered
+    
+    try:
+        from scipy.stats import norm
+    except ImportError:
+        # Fallback without scipy: use simple approximation
+        expected = math.exp(mu + 0.5 * sigma**2)
+        covered = max(0.0, expected - deductible)
+        if limit is not None and limit > 0:
+            covered = min(covered, max(0.0, limit - deductible))
+        return covered
+    
+    mean_X = math.exp(mu + 0.5 * sigma**2)
+    
+    # E[(X - d)+] for deductible d > 0
+    if deductible > 0:
+        z_d = (math.log(deductible) - mu) / sigma
+        # E[X·1{X>d}] = exp(μ + σ²/2) · Φ(σ - z_d)
+        partial = mean_X * norm.sf(z_d - sigma)
+        # d·P(X>d) = d · Φ(-z_d) = d · sf(z_d)
+        covered = partial - deductible * norm.sf(z_d)
+    else:
+        covered = mean_X
+    
+    # Apply policy limit: subtract excess above limit
+    if limit is not None and limit > 0 and limit > deductible:
+        z_l = (math.log(limit) - mu) / sigma
+        partial_l = mean_X * norm.sf(z_l - sigma)
+        excess_l = partial_l - limit * norm.sf(z_l)
+        covered -= max(0.0, excess_l)
+    
+    return max(0.0, covered)
+
+
 def _apply_discount(
     amount: float,
     annual_rate: float,
@@ -446,11 +503,17 @@ def _calculate_single_premium_validated(
     expected_severity: Optional[float] = None,
     deductible: float = 0.0,
     coverage_limit: Optional[float] = None,
+    severity_lognormal_mu: float = 11.5,
+    severity_lognormal_sigma: float = 0.6,
 ) -> Dict[str, float]:
     """
     Internal calculation function.
 
     All arguments are expected to be already validated.
+    
+    Parameters for Jensen's inequality correction (PATCH-02):
+        severity_lognormal_mu: μ parameter of LogNormal severity distribution
+        severity_lognormal_sigma: σ parameter of LogNormal severity distribution
     """
     # ================================================================
     # Step 1: expected covered loss.
@@ -459,12 +522,15 @@ def _calculate_single_premium_validated(
     # иначе legacy: P * sum_insured.
     # ================================================================
     if expected_severity is not None:
-        covered = expected_severity - deductible
-        covered = max(0.0, covered)
-
-        if coverage_limit is not None:
-            covered = min(covered, coverage_limit)
-
+        # PATCH-02: Jensen's inequality fix for LogNormal severity
+        # Use E[max(0, X - d)] instead of max(0, E[X] - d)
+        # For LogNormal(mu, sigma), we use the analytical formula
+        covered = _covered_loss_lognormal(
+            mu=severity_lognormal_mu,
+            sigma=severity_lognormal_sigma,
+            deductible=deductible,
+            limit=coverage_limit,
+        )
         net_undiscounted = probability * covered
     else:
         net_undiscounted = probability * sum_insured
@@ -648,6 +714,8 @@ def calculate_single_premium(
             expected_severity=expected_severity,
             deductible=deductible,
             coverage_limit=coverage_limit,
+            severity_lognormal_mu=11.5,
+            severity_lognormal_sigma=0.6,
         )
 
     except (InvalidInputError, PremiumCalculationError):
@@ -749,6 +817,8 @@ def calculate_premium(
                     expected_severity=expected_severity,
                     deductible=deductible,
                     coverage_limit=coverage_limit,
+                    severity_lognormal_mu=11.5,
+                    severity_lognormal_sigma=0.6,
                 )
             )
 
