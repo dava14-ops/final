@@ -1914,7 +1914,7 @@ def validate_model(params: Any) -> bool:
             _dict_get_normalized(cf_meta, "v_hat_basis", "linear")
         ).lower()
 
-        if basis_type not in {"linear", "spline", "powers"}:
+        if basis_type not in {"linear", "spline", "powers", "none"}:
             raise ModelValidationError(
                 f"Unknown cf_basis_metadata.v_hat_basis: '{_fmt(basis_type)}'"
             )
@@ -2968,6 +2968,8 @@ def _build_cf_basis_at_prediction(
 
         return {name: values}
 
+    if basis_type == "none":
+        return {}  # Reduced Form: CF basis отсутствует
     if basis_type == "powers":
         return _build_powers_basis(params, residuals_arr)
 
@@ -3207,6 +3209,11 @@ def _cox_linear_predictor_details(
         if basis_type == "none":
             v_hat_value = 0.0
             cf_basis_values = {}
+        elif basis_type in {"spline", "powers"}:
+            cf_basis_values = _build_cf_basis_at_prediction(
+                params,
+                np.array([raw_residual], dtype=float),
+            )
         else:
             if _linear_cf_standardized(params):
                 v_hat_value = float(
@@ -3222,14 +3229,8 @@ def _cox_linear_predictor_details(
             if not math.isfinite(v_hat_value):
                 raise PredictionError("v_hat is not finite")
 
-            if basis_type in {"spline", "powers"}:
-                cf_basis_values = _build_cf_basis_at_prediction(
-                    params,
-                    np.array([raw_residual], dtype=float),
-                )
-            else:
-                linear_name = cf_cols[0] if cf_cols else "v_hat"
-                cf_basis_values[linear_name] = np.array([v_hat_value], dtype=float)
+            linear_name = cf_cols[0] if cf_cols else "v_hat"
+            cf_basis_values[linear_name] = np.array([v_hat_value], dtype=float)
 
     convention = _get_cox_peakload_convention(params)
 
