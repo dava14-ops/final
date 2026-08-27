@@ -306,8 +306,9 @@ IV_MODE_CAUSAL = "causal"
 IV_MODE_PREDICTIVE = "predictive"
 VALID_IV_MODES = frozenset({IV_MODE_CAUSAL, IV_MODE_PREDICTIVE})
 
-MAX_AUTO_INCREASES = 5
-INCREASE_FACTOR = 1.5
+# УДАЛЕНО: MAX_AUTO_INCREASES и INCREASE_FACTOR больше не используются.
+# Автокоррекция слабого инструмента методологически некорректна (см. Stock-Yogo 2005).
+# Вместо этого при F < 10.4 происходит принудительное переключение в predictive режим.
 
 # Time conventions
 MTBF_INPUT_UNIT = "engine_hours"
@@ -397,8 +398,9 @@ class TrainingConfig:
     # Фаза 8: Interaction Age × Hours
     beta_age_hours: float = 0.15  # синергетический эффект
 
-    # Запрет автокоррекции инструмента для реальных данных
-    allow_auto_instrument_correction: bool = True
+    # УДАЛЕНО: allow_auto_instrument_correction больше не используется.
+    # Автокоррекция слабого инструмента удалена как методологически некорректная.
+    # При F < 10.4 происходит автоматическое переключение в predictive режим.
 
     @property
     def instrument_strength(self) -> float:
@@ -2060,11 +2062,8 @@ def run_first_stage_and_iv(
     return result.fs, resid_arr, fs_names, fs_params, iv
 
 
-def strengthen_instrument_coeff(value: float) -> float:
-    value = float(value)
-    if abs(value) < 1e-8:
-        return 0.1
-    return value * INCREASE_FACTOR
+# УДАЛЕНО: strengthen_instrument_coeff больше не используется.
+# Автокоррекция слабого инструмента методологически некорректна.
 
 
 def determine_iv_mode(
@@ -2937,8 +2936,9 @@ def collect_training_config() -> TrainingConfig:
     use_claims = data_source_choice == "2"
     use_hybrid = data_source_choice == "3"
 
-    # Автокоррекция инструмента недопустима для реальных данных
-    cfg.allow_auto_instrument_correction = not (use_claims or use_hybrid)
+    # УДАЛЕНО: allow_auto_instrument_correction больше не используется.
+    # Автокоррекция инструмента удалена как методологически некорректная.
+    # При слабом инструменте (F < 10.4) происходит переключение в predictive режим.
 
     if use_hybrid:
         # Гибридный режим: DGP + реальные weather/soil
@@ -3773,87 +3773,43 @@ def fit_first_stage_and_cf(
     )
     logger.info("IV-режим: %s", iv_mode)
 
-    # ─── Автокоррекция слабого инструмента ──────────────────────────────────
+    # ─── КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Удалена автокоррекция слабого инструмента
+    # Автоусиление коэффициента fs_z искусственно изменяет DGP, что разрушает
+    # свойства состоятельности IV-оценки. Если инструмент слабый (F < 10.4),
+    # модель должна переключаться в predictive режим без попыток "лечения" данных.
+    # См. Stock & Yogo (2005) для критических значений F-статистики.
     weak_instrument_fixed = False
-
+    
     f_weak = iv_diagnostics.get("f_statistic_weak")
     cd_weak = iv_diagnostics.get("cragg_donald_weak")
-
+    
     needs_strength = (f_weak is True) or (cd_weak is True)
-    unknown_diagnostics = (f_weak is None) or (cd_weak is None)
-
+    
     if needs_strength:
-        if not cfg.allow_auto_instrument_correction:
-            raise RuntimeError(
-                "Weak instrument detected. Auto-correction of the instrument "
-                "is disabled for real/hybrid data. Cannot proceed with invalid "
-                "instrument. Check the relevance of Z or switch to predictive mode."
-            )
+        f_stat_val = iv_diagnostics.get("f_statistic", 0.0)
+        logger.warning(
+            "⚠️ КРИТИЧЕСКАЯ ОШИБКА ЭКОНОМЕТРИКИ: Слабый инструмент обнаружен "
+            "(F-statistic = %.2f < 10.4 по Stock-Yogo). "
+            "Каузальная интерпретация коэффициента γ НЕВОЗМОЖНА. "
+            "Автоматическая коррекция fs_z удалена как методологически некорректная.",
+            f_stat_val
+        )
+        
+        # Принудительное переключение в predictive режим
         print()
-        print("Обнаружен слабый инструмент.")
-
-        # ─── Patch 8: Запрет автоусиления для claims-данных ─────────────
-        use_claims_local = getattr(cfg, "_use_claims", False)
-        if use_claims_local:
-            f_stat_val = iv_diagnostics.get("f_statistic", 0.0)
-            raise RuntimeError(
-                f"Слабый инструмент обнаружен (F={f_stat_val:.2f} < 10). "
-                "Автоусиление недопустимо для реальных claims-данных. "
-                "Рассмотрите использование другого инструмента или "
-                "примите bias слабого инструмента."
-            )
-
-        if ask_yesno("Запустить автокоррекцию first_stage_z_coef?", True):
-            recalibrate = ask_yesno(
-                "Перекалибровывать baseline/censoring после изменения fs_z?",
-                True,
-            )
-
-            for attempt in range(MAX_AUTO_INCREASES):
-                old_fs_z = cfg.fs_z
-                cfg.fs_z = strengthen_instrument_coeff(cfg.fs_z)
-                print(f"Попытка {attempt + 1}: fs_z {old_fs_z} -> {cfg.fs_z}")
-
-                dgp = set_dgp_field(dgp, "first_stage_z_coef", cfg.fs_z)
-
-                if recalibrate:
-                    baseline_h, calibrated_censoring_scale, baseline_diag = (
-                        calibrate_model(cfg, dgp)
-                    )
-
-                (
-                    data,
-                    data_mod,
-                    transform_info,
-                    achieved_event_rate,
-                    peak_stats,
-                    training_meta_flat,
-                ) = generate_training_data(
-                    cfg,
-                    dgp,
-                    baseline_h,
-                    calibrated_censoring_scale,
-                )
-
-                fitted_fs, resid, fs_names, fs_params, iv_diagnostics = (
-                    run_first_stage_and_iv(data_mod)
-                )
-
-                print(f"F-statistic: {iv_diagnostics['f_statistic']}")
-
-                if iv_diagnostics.get("instrument_adequate", False):
-                    weak_instrument_fixed = True
-                    print("Инструмент стал достаточно сильным.")
-                    break
-
-            if not weak_instrument_fixed:
-                if not ask_yesno("Инструмент всё ещё слабый. Продолжить?", False):
-                    raise RuntimeError("Слабый инструмент не исправлен.")
-
-    elif unknown_diagnostics:
-        logger.warning("IV-диагностика неполная или неконечная.")
-        if not ask_yesno("Продолжить без полной диагностики?", False):
-            raise RuntimeError("IV-диагностика недоступна.")
+        print("=" * 70)
+        print("ПЕРЕКЛЮЧЕНИЕ В PREDICTIVE РЕЖИМ")
+        print("=" * 70)
+        print(f"Причина: F-statistic = {f_stat_val:.2f} < 10.4 (Stock-Yogo critical value)")
+        print()
+        print("ВНИМАНИЕ: Модель может использоваться ТОЛЬКО для предсказаний.")
+        print("Каузальные утверждения о влиянии PeakLoad на отказы НЕКОРРЕКТНЫ.")
+        print("=" * 70)
+        print()
+        
+        # Переопределяем iv_mode в predictive
+        iv_mode = IV_MODE_PREDICTIVE
+        logger.info("IV-режим изменён на '%s' из-за слабого инструмента", iv_mode)
 
     # ─── CF Cox estimation ──────────────────────────────────────────────────
     print()
