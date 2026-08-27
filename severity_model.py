@@ -41,6 +41,8 @@ from constants import (
     SEVERITY_WEIGHTS,
     CRITICALITY_WEIGHTS,
     BRAND_MAP,
+    SEVERITY_LOGNORMAL_MU,
+    SEVERITY_LOGNORMAL_SIGMA,
 )
 
 logger = logging.getLogger(__name__)
@@ -572,6 +574,16 @@ def _build_fallback_model(notes: List[str]) -> SeverityModel:
             std_repair_cost=0.0,
         )
 
+    # PATCH-03: Fallback severity model с экспертными значениями вместо нулей
+    # Используем среднее из LogNormal распределения: exp(μ + σ²/2) ≈ 118 000 руб.
+    fallback_mean_repair = math.exp(SEVERITY_LOGNORMAL_MU + 0.5 * SEVERITY_LOGNORMAL_SIGMA**2)
+    fallback_mean_downtime = 25.0  # средний простой в часах
+    
+    logger.info(
+        "SeverityModel fallback: mean_repair=%.2f руб., mean_downtime=%.1f ч",
+        fallback_mean_repair, fallback_mean_downtime,
+    )
+
     return SeverityModel(
         version="1.1",
         source="fallback (constants.py)",
@@ -579,12 +591,12 @@ def _build_fallback_model(notes: List[str]) -> SeverityModel:
         n_events=0,
         n_systems=len(systems),
         systems=systems,
-        overall_mean_repair=0.0,
-        overall_median_repair=0.0,
-        overall_p95_repair=0.0,
-        overall_mean_downtime=0.0,
+        overall_mean_repair=fallback_mean_repair,
+        overall_median_repair=fallback_mean_repair * 0.7,  # аппроксимация медианы
+        overall_p95_repair=fallback_mean_repair * 1.5,  # аппроксимация 95-го перцентиля
+        overall_mean_downtime=fallback_mean_downtime,
         overall_major_share=0.30,
-        overall_std_repair=0.0,
+        overall_std_repair=fallback_mean_repair * SEVERITY_LOGNORMAL_SIGMA,
         hourly_downtime_cost=DEFAULT_HOURLY_DOWNTIME_COST,
         fallback_used=True,
         notes=notes,

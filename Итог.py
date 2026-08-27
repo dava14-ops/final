@@ -2241,6 +2241,15 @@ def generate_data(
     else:
         raise ValueError("Invalid brand_encoding after DGP validation")
 
+    # PATCH-04: Clip PeakLoad к [0, 1] после всех бренд-добавок
+    n_clipped = int(((peak_load < 0.0) | (peak_load > 1.0)).sum())
+    if n_clipped > 0:
+        logger.warning(
+            "PeakLoad клипнут к [0,1] для %d/%d наблюдений (%.1f%%)",
+            n_clipped, n, 100*n_clipped/n,
+        )
+    peak_load = np.clip(peak_load, 0.0, 1.0)
+
     # ─── Построение linear predictor ────────────────────────────────────
     lp_raw = (
         dgp.gamma * (peak_load - struct_int)
@@ -2604,9 +2613,22 @@ def prepare_claims_for_cf(
         int(data["event"].sum()),
     )
 
-    # НОВОЕ: Interaction для claims
+    # НОВОЕ: Interaction для claims (центрированный и стандартизированный)
     if "x_age" in data.columns and "x_hours" in data.columns:
-        data["x_age_hours"] = data["x_age"] * data["x_hours"]
+        x_age_mean = float(data["x_age"].mean())
+        x_hours_mean = float(data["x_hours"].mean())
+        raw_interaction = (data["x_age"] - x_age_mean) * (data["x_hours"] - x_hours_mean)
+        x_age_hours_mean = float(raw_interaction.mean())
+        x_age_hours_std = float(raw_interaction.std(ddof=1))
+        if x_age_hours_std < 1e-9:
+            x_age_hours_std = 1.0
+        data["x_age_hours"] = (raw_interaction - x_age_hours_mean) / x_age_hours_std
+        data.attrs["interaction_params"] = {
+            "x_age_mean": x_age_mean,
+            "x_hours_mean": x_hours_mean,
+            "x_age_hours_mean": x_age_hours_mean,
+            "x_age_hours_std": x_age_hours_std,
+        }
 
     return data
 
@@ -2795,6 +2817,9 @@ def fit_cf_cox_on_claims(
     cox_exog = ["PeakLoad", "x_age", "x_hours", "x_climate", "x_soil", "x_power"]
     brand_cols = [c for c in data_mod.columns if c.startswith("brand_")]
     cox_exog.extend(brand_cols)
+    # Добавить x_age_hours если есть (PATCH-D4)
+    if "x_age_hours" in data_mod.columns:
+        cox_exog.append("x_age_hours")
     cox_exog.extend(cf_cols)
 
     # Убедиться, что все колонки есть
@@ -3254,6 +3279,8 @@ def _build_cf_columns(
             v_std, knots=interior_knots
         )
         basis = _remove_constant_direction(basis_vals)
+        # PATCH-01: Сохранить проекционную матрицу для воспроизведения при инференсе
+        proj_matrix = np.linalg.lstsq(basis_vals, basis, rcond=None)[0]
         rank = basis.shape[1]
 
         if actual_basis == "spline":
@@ -3265,6 +3292,7 @@ def _build_cf_columns(
                 "spline_domain_min": domain_min,
                 "spline_domain_max": domain_max,
                 "basis_transform": "constant_direction_removed",
+                "projection_matrix": proj_matrix.tolist(),  # ← ДОБАВЛЕНО
             }
         else:
             col_names = [f"v_hat_pow{i}" for i in range(rank)]
@@ -3346,6 +3374,9 @@ def _build_cf_columns(
             }
             df[col_name] = standardized
 
+        # PATCH-01: Сохранить проекционную матрицу для powers basis
+        proj_matrix = np.linalg.lstsq(basis_vals, basis, rcond=None)[0]
+        
         return CFBuildResult(
             df_with_cf=df,
             column_names=col_names,
@@ -3356,6 +3387,7 @@ def _build_cf_columns(
             basis_kwargs={
                 "max_power": max_power,
                 "basis_transform": "constant_direction_removed",
+                "projection_matrix": proj_matrix.tolist(),  # ← ДОБАВЛЕНО
             },
             linear_standardized=True,
         )
@@ -3803,6 +3835,20 @@ def fit_first_stage_cluster_robust(
 
     # Cluster IDs
     clusters = data[cluster_col].values
+
+    n_clusters = len(np.unique(clusters))
+    if n_clusters < 30:
+        raise ValueError(
+            f"Кластерная структура содержит только {n_clusters} кластеров. "
+            f"Минимум 30 для состоятельных кластерных стандартных ошибок. "
+            f"Используйте wild cluster bootstrap или увеличьте число кластеров."
+        )
+    if n_clusters < 50:
+        logger.warning(
+            "⚠️ Только %d кластеров (< 50). Кластерные SE могут быть смещены. "
+            "Рассмотрите wild cluster bootstrap или CR2/CR3 коррекцию.",
+            n_clusters,
+        )
 
     # OLS с cluster-robust covariance
     model = sm.OLS(y, X_with_const)
