@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import re
 import traceback
 import warnings
@@ -50,6 +51,7 @@ from constants import (
     SEVERITY_WEIGHTS,
     MTBF_BASELINE_HOURS,
     MODEL_TIME_UNIT,
+    PL_HAT_EXOG_CONVENTION,
 )
 
 # Optional scipy.interpolate for spline basis.
@@ -89,6 +91,10 @@ def _get_scipy_stats():
     return stats_mod
 
 
+# ─── Bootstrap parallelism ──────────────────────────────────────────
+_n_cpus = os.cpu_count() or 1
+_bootstrap_jobs = min(8, max(1, _n_cpus - 2))  # Оставляем 2 ядра для ОС
+
 logger = logging.getLogger(__name__)
 
 
@@ -119,6 +125,7 @@ def _scalar_from_array(value: Any) -> float:
     except (TypeError, ValueError, IndexError):
         return np.nan
 
+
 def _safe_keys(obj: Any) -> List[Any]:
     """
     Безопасно возвращает ключи из dict/Series/params-like объекта.
@@ -143,6 +150,49 @@ def _safe_keys(obj: Any) -> List[Any]:
         except (TypeError, ValueError, AttributeError):
             return []
     return []
+
+
+def _is_ambiguous_array_error(exc: BaseException) -> bool:
+    """Проверка, что ошибка именно про неоднозначный булев массив."""
+    return isinstance(exc, ValueError) and "truth value of an array" in str(exc).lower()
+
+
+def _safe_series_scalar(series: Any, key: str, what: str) -> float:
+    """
+    Безопасно извлекает скаляр из pandas Series по имени коэффициента.
+    Не использует .loc[] напрямую, чтобы избежать ошибок при дублях индекса.
+    """
+    if series is None:
+        raise RuntimeError(f"{what}: series is None")
+
+    try:
+        mask = np.asarray(series.index == key, dtype=bool)
+    except Exception:
+        mask = np.array([idx == key for idx in series.index], dtype=bool)
+
+    vals = np.asarray(series).ravel()[mask]
+
+    if vals.size == 0:
+        raise RuntimeError(f"{what}: coefficient '{key}' not found")
+
+    if vals.size > 1:
+        logger.warning(
+            "%s: coefficient '%s' has %d duplicate entries; taking first",
+            what,
+            key,
+            vals.size,
+        )
+
+    try:
+        val = float(vals[0])
+    except Exception as exc:
+        raise RuntimeError(f"{what}: cannot convert coefficient '{key}' to float") from exc
+
+    if not math.isfinite(val):
+        raise RuntimeError(f"{what}: coefficient '{key}' is non-finite")
+
+    return val
+
 
 # ---------------------------------------------------------------------------
 # Constants (Imported from centralized constants.py)
@@ -337,14 +387,14 @@ class FirstStageFit:
 
 @dataclass
 class CFModelResult:
-    gamma_hat: float = float('nan')
-    naive_model_se: float = float('nan')
+    gamma_hat: float = float("nan")
+    naive_model_se: float = float("nan")
     bootstrap_se: Optional[float] = None
     se_type: str = "naive"
-    cf_coef: float = float('nan')
+    cf_coef: float = float("nan")
     cf_coef_signed: Optional[float] = None
     cph: Optional[CoxPHFitter] = None
-    max_se: float = float('nan')
+    max_se: float = float("nan")
     penalizer: float = 0.0
     is_penalized: bool = False
     convergence_info: Optional[ConvergenceInfo] = None
@@ -424,11 +474,14 @@ class DGPParameters:
     gamma: float = 0.5
     rho: float = 0.7
     delta: float = 0.7
-    intercept: float = 10.0
+    # FIX 1: PeakLoad normalized to [0, 1] range to match TUM CAN bus data.
+    # Original intercept was 10.0 (DGP scale); now 0.5 (midpoint of [0,1]).
+    intercept: float = 0.5
     structural_intercept: Optional[float] = None
     first_stage_z_coef: float = 0.5
 
-    # First stage coefficients
+    # First stage coefficients — scaled for [0,1] range.
+    # Original values were for DGP scale (~10.0); now kept for relative effects.
     fs_age_coef: float = 0.15
     fs_hours_coef: float = 0.10
     fs_climate_coef: float = 0.20
@@ -468,11 +521,10 @@ class DGPParameters:
     beta_brand_coefs: Optional[Dict[int, float]] = None
 
     # ─── Фаза 3: калибровка PeakLoad под TUM ───────────────────────────
-    # Если заданы оба, маргинальное распределение PeakLoad
-    # перенормируется к целевым mean/std, сохраняя ранговую
-    # корреляцию с eps_d (эндогенность не разрушается).
-    peakload_target_mean: Optional[float] = None
-    peakload_target_std: Optional[float] = None
+    # FIX 1: PeakLoad теперь генерируется в [0, 1] диапазоне.
+    # Эти значения соответствуют статистике TUM CAN bus данных.
+    peakload_target_mean: float = 0.55
+    peakload_target_std: float = 0.15
 
     # ─── Фаза 5.3 / 6.6: погодный инструмент ─────────────────────────────
     # Если instrument_source == "weather", Z генерируется как
@@ -558,9 +610,7 @@ class SimulationConfig:
     max_failure_rate: float = 0.10
     allow_experimental_bootstrap: bool = False
     v_hat_basis: str = "linear"
-    v_hat_basis_params: Optional[Dict[str, Any]] = field(
-        default_factory=lambda: {"n_knots": 2}
-    )
+    v_hat_basis_params: Optional[Dict[str, Any]] = field(default_factory=lambda: {"n_knots": 2})
     contamination_probability: float = 1.0
     extra_x_cols: Optional[List[str]] = None
     center_peakload: Optional[float] = None
@@ -582,6 +632,11 @@ class CFFitOptions:
     min_events_per_covariate: int
     save_tracebacks: bool
     cluster_col: Optional[str] = None
+    # ─── Bootstrap SE for generated regressors (FIX 4) ───
+    # Bootstrap включён по умолчанию для корректного учёта
+    # неопределённости первой стадии (generated regressor problem).
+    # Наивные SE из lifelines занижают дисперсию.
+    n_bootstrap: int = 50  # 200 итераций — баланс точность/скорость
 
 
 def fit_options_from_config(config: SimulationConfig) -> CFFitOptions:
@@ -607,17 +662,8 @@ def fit_options_from_config(config: SimulationConfig) -> CFFitOptions:
 
 
 # ---------------------------------------------------------------------------
-# DGP validation
+# Simulation config validation
 # ---------------------------------------------------------------------------
-def _validate_dgp(dgp: Optional[DGPParameters]) -> DGPParameters:
-    # ... полное тело функции ...
-    return dgp
-
-
-# ---------------------------------------------------------------------------
-# Simulation config validation (ДОЛЖНА БЫТЬ ЗДЕСЬ, после _validate_dgp)
-# ---------------------------------------------------------------------------
-# Forward declaration for static analysis only
 
 
 def validate_simulation_config(config: SimulationConfig) -> None:
@@ -629,10 +675,15 @@ def validate_simulation_config(config: SimulationConfig) -> None:
         raise ValueError("n_bootstrap must be >= 0")
     if config.bootstrap_jobs is not None and config.bootstrap_jobs <= 0:
         raise ValueError("bootstrap_jobs must be positive or None")
-    if config.baseline_hazard <= 0:
-        raise ValueError("baseline_hazard must be > 0")
-    if config.censoring_scale <= 0:
-        raise ValueError("censoring_scale must be > 0")
+
+    # ★ FIX: baseline_hazard и censoring_scale нужны только для mc_parametric,
+    # так как case/applied_wild используют ресэмплинг существующих данных.
+    if config.bootstrap_method.lower() == "mc_parametric":
+        if config.baseline_hazard <= 0:
+            raise ValueError("baseline_hazard must be > 0")
+        if config.censoring_scale <= 0:
+            raise ValueError("censoring_scale must be > 0")
+
     if not (0 <= config.bootstrap_success_frac <= 1):
         raise ValueError("bootstrap_success_frac must be in [0, 1]")
     if not (0 <= config.max_failure_rate <= 1):
@@ -643,9 +694,7 @@ def validate_simulation_config(config: SimulationConfig) -> None:
         raise ValueError(f"Unknown bootstrap_method: {config.bootstrap_method}")
 
     if method == "mc_parametric" and config.bootstrap_mode != "mc":
-        raise ValueError(
-            "mc_parametric bootstrap is allowed only in bootstrap_mode='mc'"
-        )
+        raise ValueError("mc_parametric bootstrap is allowed only in bootstrap_mode='mc'")
 
     if method == "applied_wild" and not config.allow_experimental_bootstrap:
         raise ValueError(
@@ -958,6 +1007,13 @@ X_STANDARDIZATION: Dict[str, Dict[str, Any]] = {
         "shift": 1000.0,  # P-02: медиана LogNormal(1000)
         "scale": 1000.0,
     },
+    # FIX 1: PeakLoad normalized to [0, 1] range matching TUM CAN bus.
+    "PeakLoad": {
+        "raw_col": "PeakLoad",
+        "standardize": True,
+        "shift": 0.55,  # TUM data mean
+        "scale": 0.15,  # TUM data std
+    },
     "x_climate": {
         "raw_col": "Climate",
         "standardize": False,
@@ -1028,11 +1084,7 @@ def _ensure_brand_dummies(
     elif "Brand" in source_data.columns:
         codes = source_data["Brand"].astype(int).to_numpy()
     else:
-        existing = [
-            c
-            for c in source_data.columns
-            if str(c).startswith("brand_") and c != ref_col
-        ]
+        existing = [c for c in source_data.columns if str(c).startswith("brand_") and c != ref_col]
 
         if not existing:
             raise KeyError("Brand/brand_code or brand dummy columns are missing")
@@ -1082,9 +1134,7 @@ def _add_design_x_columns(
             vals = source_data[std_col].astype(float).to_numpy()
 
             if not np.all(np.isfinite(vals)):
-                raise ValueError(
-                    f"Existing standardized column {std_col} is non-finite"
-                )
+                raise ValueError(f"Existing standardized column {std_col} is non-finite")
 
             model_data[std_col] = vals
             x_cols.append(std_col)
@@ -1108,9 +1158,7 @@ def _add_design_x_columns(
 
             model_data["x_brand"] = vals
         else:
-            raise KeyError(
-                "Brand or x_brand is required for legacy_continuous encoding"
-            )
+            raise KeyError("Brand or x_brand is required for legacy_continuous encoding")
 
         x_cols.append("x_brand")
 
@@ -1123,9 +1171,7 @@ def _add_design_x_columns(
         x_cols.extend(dummy_cols)
 
     else:
-        raise ValueError(
-            "brand_encoding must be either 'dummies' or 'legacy_continuous'"
-        )
+        raise ValueError("brand_encoding must be either 'dummies' or 'legacy_continuous'")
 
     # Extra X
     valid_extra = _validate_extra_x_cols(source_data, extra_x_cols)
@@ -1148,9 +1194,7 @@ def _add_design_x_columns(
                 x_cols.append("x_age_hours")
     elif "x_age" in model_data.columns and "x_hours" in model_data.columns:
         # Fallback: вычисляем и стандартизируем (для claims без готовой колонки)
-        raw_interaction = (
-            model_data["x_age"].to_numpy() * model_data["x_hours"].to_numpy()
-        )
+        raw_interaction = model_data["x_age"].to_numpy() * model_data["x_hours"].to_numpy()
         m = float(np.mean(raw_interaction))
         s = float(np.std(raw_interaction, ddof=1))
         if s < 1e-9:
@@ -1160,6 +1204,25 @@ def _add_design_x_columns(
             x_cols.append("x_age_hours")
 
     return x_cols
+
+
+# ---------------------------------------------------------------------------
+# Patch 6: Валидация corr_zu для каузального режима
+# ---------------------------------------------------------------------------
+def validate_dgp_for_causal_mode(dgp: DGPParameters, iv_mode: str = "causal") -> None:
+    """Проверяет корректность DGP для каузального режима."""
+    if iv_mode == "causal" and abs(dgp.corr_zu) > 1e-12:
+        raise ValueError(
+            f"corr_zu={dgp.corr_zu} нарушает экзогенность инструмента в causal-режиме. "
+            "Установите corr_zu=0.0 или используйте 'predictive' режим."
+        )
+
+    if abs(dgp.corr_zu) > 1e-12:
+        logger.warning(
+            "corr_zu=%.4f != 0: инструмент эндогенен. "
+            "Результаты следует интерпретировать как стресс-тест, а не каузальный эффект.",
+            dgp.corr_zu,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1200,6 +1263,14 @@ def _validate_dgp(dgp: Optional[DGPParameters]) -> DGPParameters:
 
     dgp.rho = _validate_corr(dgp.rho, "dgp.rho")
     dgp.corr_zu = _validate_corr(dgp.corr_zu, "dgp.corr_zu")
+
+    if abs(dgp.corr_zu) > 1e-12:
+        logger.warning(
+            "DGP: corr_zu=%.6f != 0. Instrument Z is correlated with structural error. "
+            "Exclusion restriction violated. Causal interpretation invalid. "
+            "Use this mode only for stress testing / invalid-instrument experiments.",
+            dgp.corr_zu,
+        )
 
     if dgp.structural_intercept is not None:
         dgp.structural_intercept = _as_finite_float(
@@ -1263,9 +1334,7 @@ def _validate_dgp(dgp: Optional[DGPParameters]) -> DGPParameters:
     segment = str(getattr(dgp, "segment", "light")).lower()
 
     if segment not in SEGMENTS:
-        raise ValueError(
-            f"Unknown segment: '{segment}'. Valid values are: {sorted(SEGMENTS)}"
-        )
+        raise ValueError(f"Unknown segment: '{segment}'. Valid values are: {sorted(SEGMENTS)}")
 
     dgp.segment = segment
 
@@ -1515,21 +1584,16 @@ def load_real_weather_windows(
     vals = pd.to_numeric(subset, errors="coerce").dropna()
 
     if len(vals) < 5:
-        raise ValueError(
-            f"Недостаточно данных для campaign='{campaign}': {len(vals)} записей < 5"
-        )
+        raise ValueError(f"Недостаточно данных для campaign='{campaign}': {len(vals)} записей < 5")
 
     mean = float(vals.mean())
     std = float(vals.std(ddof=1))
     if std < 1e-9:
-        raise ValueError(
-            f"working_days_window для campaign='{campaign}' имеет нулевую дисперсию"
-        )
+        raise ValueError(f"working_days_window для campaign='{campaign}' имеет нулевую дисперсию")
 
     standardized = ((vals - mean) / std).to_numpy(dtype=float)
     logger.info(
-        "Загружено %d реальных погодных записей (campaign=%s): "
-        "mean=%.1f дней, std=%.1f дней",
+        "Загружено %d реальных погодных записей (campaign=%s): mean=%.1f дней, std=%.1f дней",
         len(standardized),
         campaign,
         mean,
@@ -1570,9 +1634,7 @@ def load_real_covariates_for_simulation(
 
             if len(rdf) >= 5 and "rainfall_anomaly" in rdf.columns:
                 rain_anomaly = (
-                    pd.to_numeric(rdf["rainfall_anomaly"], errors="coerce")
-                    .dropna()
-                    .values
+                    pd.to_numeric(rdf["rainfall_anomaly"], errors="coerce").dropna().values
                 )
                 n_clusters = len(rain_anomaly)
 
@@ -1609,9 +1671,7 @@ def load_real_covariates_for_simulation(
     # Fallback для Z
     if "Z" not in result:
         result["Z"] = rng.normal(0, 1, size=n) * z_scale_factor
-        result["cluster_indices"] = np.arange(
-            n
-        )  # fallback: каждый трактор = свой кластер
+        result["cluster_indices"] = np.arange(n)  # fallback: каждый трактор = свой кластер
         logger.warning("Z: синтетический fallback")
 
     # ─── Загрузка working_days для x_climate ────────────────────────
@@ -1623,9 +1683,7 @@ def load_real_covariates_for_simulation(
 
             if len(wdf) >= 5 and "working_days_window" in wdf.columns:
                 working_days = (
-                    pd.to_numeric(wdf["working_days_window"], errors="coerce")
-                    .dropna()
-                    .values
+                    pd.to_numeric(wdf["working_days_window"], errors="coerce").dropna().values
                 )
 
                 # Используем ТЕ ЖЕ cluster_indices, что и для Z
@@ -1648,8 +1706,7 @@ def load_real_covariates_for_simulation(
                 )
 
                 logger.info(
-                    "x_climate = working_days (NASA POWER): "
-                    "range=[%.0f, %.0f] дней, n=%d записей",
+                    "x_climate = working_days (NASA POWER): range=[%.0f, %.0f] дней, n=%d записей",
                     c_min,
                     c_max,
                     len(working_days),
@@ -1681,9 +1738,7 @@ def load_real_covariates_for_simulation(
                 soil_col = "soil_index"
 
             if soil_col and len(sdf) >= 5:
-                soil_vals = (
-                    pd.to_numeric(sdf[soil_col], errors="coerce").dropna().values
-                )
+                soil_vals = pd.to_numeric(sdf[soil_col], errors="coerce").dropna().values
 
                 # Используем ТЕ ЖЕ cluster_indices, что и для Z
                 cluster_indices = result["cluster_indices"]
@@ -1706,9 +1761,7 @@ def load_real_covariates_for_simulation(
                     result["x_soil"] + rng.normal(0, jitter_std, size=n), 0.0, 1.0
                 )
 
-                logger.info(
-                    "x_soil = soil moisture (GLDAS-2.1): n=%d записей", len(soil_vals)
-                )
+                logger.info("x_soil = soil moisture (GLDAS-2.1): n=%d записей", len(soil_vals))
             else:
                 raise ValueError("Недостаточно данных в soil_windows.csv")
         except Exception as exc:
@@ -1717,9 +1770,7 @@ def load_real_covariates_for_simulation(
     # Fallback для x_soil
     if "x_soil" not in result:
         result["x_soil"] = rng.beta(2.0, 2.5, size=n)
-        result["x_soil"] = np.clip(
-            result["x_soil"] + rng.normal(0, jitter_std, size=n), 0.0, 1.0
-        )
+        result["x_soil"] = np.clip(result["x_soil"] + rng.normal(0, jitter_std, size=n), 0.0, 1.0)
         logger.warning("x_soil: синтетический fallback")
 
     return result
@@ -1967,9 +2018,7 @@ def generate_data(
     if instrument_strength is None:
         instrument_strength = float(dgp.first_stage_z_coef)
     else:
-        instrument_strength = _as_finite_float(
-            instrument_strength, "instrument_strength"
-        )
+        instrument_strength = _as_finite_float(instrument_strength, "instrument_strength")
 
     # Raw covariates
     # Фаза 4.3: production_year когорты вместо непрерывного age
@@ -2017,9 +2066,7 @@ def generate_data(
         # ─── ВАЖНО: извлекаем cluster_indices для правильной кластеризации ──────
         # Если 32 реальных записи размножаются до 40000 строк,
         # то cluster_id должен быть 0..31, а не 0..39999
-        cluster_id_from_real = np.asarray(
-            real_covs.get("cluster_indices", np.arange(n)), dtype=int
-        )
+        cluster_id_from_real = np.asarray(real_covs.get("cluster_indices", np.arange(n)), dtype=int)
 
         logger.info(
             "Гибридный режим: Z, x_climate, x_soil из реальных данных, "
@@ -2076,12 +2123,6 @@ def generate_data(
     x_climate = _standardize_x_column("x_climate", climate)
     x_soil = _standardize_x_column("x_soil", soil)
     x_power = _standardize_x_column("x_power", power)
-
-    # ─── Interaction: центрирование по выборочным средним ─────────────
-    # ВАЖНО: используем СТАНДАРТИЗИРОВАННЫЕ x_age и x_hours,
-    # а НЕ сырые age и hours!
-    x_age_hours = (x_age - float(np.mean(x_age))) * (x_hours - float(np.mean(x_hours)))
-
 
     # ─── Фаза EQI: Enterprise Quality Index ────────────────────────
     if getattr(dgp, "use_enterprise_quality", False):
@@ -2157,15 +2198,11 @@ def generate_data(
             _pl_std = float(np.std(peak_load_base, ddof=1))
             if _pl_std > 1e-9:
                 peak_load_base = (
-                    _pl_target_mean
-                    + (peak_load_base - _pl_mean) / _pl_std * _pl_target_std
+                    _pl_target_mean + (peak_load_base - _pl_mean) / _pl_std * _pl_target_std
                 )
-                struct_int = (
-                    _pl_target_mean + (struct_int - _pl_mean) / _pl_std * _pl_target_std
-                )
+                struct_int = _pl_target_mean + (struct_int - _pl_mean) / _pl_std * _pl_target_std
                 logger.info(
-                    "PeakLoad перенормирован под TUM: "
-                    "mean=%.4f → %.4f, std=%.4f → %.4f",
+                    "PeakLoad перенормирован под TUM: mean=%.4f → %.4f, std=%.4f → %.4f",
                     _pl_mean,
                     _pl_target_mean,
                     _pl_std,
@@ -2203,7 +2240,6 @@ def generate_data(
 
     else:
         raise ValueError("Invalid brand_encoding after DGP validation")
-
 
     # ─── Построение linear predictor ────────────────────────────────────
     lp_raw = (
@@ -2261,9 +2297,7 @@ def generate_data(
         minor_hazard = np.clip(minor_hazard, 1e-300, 1e300)
 
         true_minor_time = -np.log(u_minor) / minor_hazard
-        true_minor_time = np.nan_to_num(
-            true_minor_time, nan=1e12, posinf=1e12, neginf=1e-12
-        )
+        true_minor_time = np.nan_to_num(true_minor_time, nan=1e12, posinf=1e12, neginf=1e-12)
         true_minor_time = np.maximum(true_minor_time, 1e-12)
         event_minor = true_minor_time <= censoring_time
     else:
@@ -2274,14 +2308,10 @@ def generate_data(
 
     # P-03: event_definition affects event/time
     if getattr(dgp, "competing_risks", False) and event_def == "any_failure":
-        observed_time = np.minimum(
-            np.minimum(true_time, true_minor_time), censoring_time
-        )
+        observed_time = np.minimum(np.minimum(true_time, true_minor_time), censoring_time)
 
         major_first = true_time <= np.minimum(true_minor_time, censoring_time)
-        minor_first = (true_minor_time < true_time) & (
-            true_minor_time <= censoring_time
-        )
+        minor_first = (true_minor_time < true_time) & (true_minor_time <= censoring_time)
 
         event = major_first | minor_first
         failure_type = np.where(
@@ -2324,9 +2354,7 @@ def generate_data(
     observed_time = np.nan_to_num(observed_time, nan=1e-12, posinf=1e12, neginf=1e-12)
     observed_time = np.maximum(observed_time, 1e-12)
 
-    true_minor_time = np.nan_to_num(
-        true_minor_time, nan=1e12, posinf=1e12, neginf=1e-12
-    )
+    true_minor_time = np.nan_to_num(true_minor_time, nan=1e12, posinf=1e12, neginf=1e-12)
     time_minor = np.where(event_minor, true_minor_time, observed_time)
     downtime_hours = downtime_hours_from_failure_type(failure_type)
 
@@ -2413,11 +2441,19 @@ def generate_data(
         "contamination_probability": float(contamination_probability),
     }
 
-    data.attrs["interaction_centering"] = {
-        "x_age_mean": x_age_mean,
-        "x_hours_mean": x_hours_mean,
-        "x_age_hours_mean": x_age_hours_mean,
-        "x_age_hours_std": x_age_hours_std,
+    # ─── Патч 4: interaction_params для инференса ─────────────────────
+    # prediction_engine.py и Real_calculator.py читают это из training_meta
+    data.attrs["interaction_params"] = {
+        "x_age_mean": float(x_age_mean),
+        "x_hours_mean": float(x_hours_mean),
+        "x_age_hours_mean": float(x_age_hours_mean),
+        "x_age_hours_std": float(x_age_hours_std),
+    }
+
+    # ─── Патч 4.2: информация о валидности инструмента ──────────────
+    data.attrs["instrument_exogeneity"] = {
+        "corr_zu": float(dgp.corr_zu),
+        "valid": abs(dgp.corr_zu) < 1e-12,
     }
 
     return data
@@ -2503,9 +2539,7 @@ def prepare_claims_for_cf(
 
     # PeakLoad
     if "peak_load_proxy" in claims_df.columns:
-        data["PeakLoad"] = pd.to_numeric(
-            claims_df["peak_load_proxy"], errors="coerce"
-        ).fillna(0.71)
+        data["PeakLoad"] = pd.to_numeric(claims_df["peak_load_proxy"], errors="coerce").fillna(0.71)
     else:
         logger.warning("peak_load_proxy отсутствует, используется 0.71")
         data["PeakLoad"] = 0.71
@@ -2783,9 +2817,7 @@ def fit_cf_cox_on_claims(
     try:
         cph.fit(cox_data, duration_col="time", event_col="event")
     except Exception as exc:
-        logger.warning(
-            "Обучение с penalizer=0.1 не удалось: %s. Пробую без регуляризации.", exc
-        )
+        logger.warning("Обучение с penalizer=0.1 не удалось: %s. Пробую без регуляризации.", exc)
         cph = CoxPHFitter(penalizer=0.0)
         cph.fit(cox_data, duration_col="time", event_col="event")
 
@@ -2796,12 +2828,12 @@ def fit_cf_cox_on_claims(
     cf.cf_basis = v_hat_basis
     cf.cf_basis_params = v_hat_basis_params or {}
     cf.warnings = []
-    
+
     # --- ИЗВЛЕЧЕНИЕ GAMMA_HAT И СТАНДАРТНЫХ ОШИБОК ---
     # Ищем колонку контрольной функции (обычно 'v_hat' или начинается с 'v_hat')
     cf_cols = [c for c in cph.params_.index if c == "v_hat" or c.startswith("v_hat") or c == "cf"]
     cf_col = cf_cols[0] if cf_cols else "v_hat"
-    
+
     if cf_col in cph.params_.index:
         cf.gamma_hat = float(cph.params_[cf_col])
         cf.cf_coef_signed = cf.gamma_hat
@@ -2890,9 +2922,7 @@ def calibrate_censoring_scale_deterministic(
     T_minor = np.asarray(base["T_minor"], dtype=float)
 
     event_def = (
-        str(getattr(dgp, "event_definition", "major_claim")).lower()
-        if dgp
-        else "major_claim"
+        str(getattr(dgp, "event_definition", "major_claim")).lower() if dgp else "major_claim"
     )
     competing = bool(getattr(dgp, "competing_risks", False)) if dgp else False
 
@@ -2969,9 +2999,7 @@ def calibrate_censoring_scale_deterministic(
             er_high = er_mid
 
     if not converged:
-        logger.warning(
-            "Censoring calibration did not reach tolerance; returning last iterate."
-        )
+        logger.warning("Censoring calibration did not reach tolerance; returning last iterate.")
 
     post_check_rates: Dict[float, float] = {}
     post_check_passed: Optional[bool] = None
@@ -3013,9 +3041,7 @@ def calibrate_censoring_scale_deterministic(
             post_check_passed = max_deviation <= 0.02
 
             if not post_check_passed:
-                logger.warning(
-                    f"Calibration post-check FAILED: max deviation={max_deviation:.3f}"
-                )
+                logger.warning(f"Calibration post-check FAILED: max deviation={max_deviation:.3f}")
         else:
             post_check_passed = None
 
@@ -3224,8 +3250,8 @@ def _build_cf_columns(
 
         interior_knots = sorted(set(np.percentile(v_std, percentiles)))
 
-        basis_vals, actual_basis, domain_min, domain_max = (
-            _v_hat_spline_basis_with_type(v_std, knots=interior_knots)
+        basis_vals, actual_basis, domain_min, domain_max = _v_hat_spline_basis_with_type(
+            v_std, knots=interior_knots
         )
         basis = _remove_constant_direction(basis_vals)
         rank = basis.shape[1]
@@ -3521,9 +3547,7 @@ def robust_first_stage_cluster_stat(
         # ВАЖНО: используем cov_type="cluster", а не "CR1"
         robust = fitted.get_robustcov_results(cov_type="cluster", groups=groups)
     except Exception as exc:
-        logger.warning(
-            "robust_first_stage_cluster_stat: get_robustcov_results failed: %s", exc
-        )
+        logger.warning("robust_first_stage_cluster_stat: get_robustcov_results failed: %s", exc)
         return float("nan"), float("nan")
 
     parameter_names = list(fitted.model.exog_names)
@@ -3540,15 +3564,11 @@ def robust_first_stage_cluster_stat(
         f_val = _scalar_from_array(f_res.fvalue)
         p_val = _scalar_from_array(f_res.pvalue)
         if not math.isfinite(f_val):
-            logger.warning(
-                "robust_first_stage_cluster_stat: f_val not finite: %s", f_val
-            )
+            logger.warning("robust_first_stage_cluster_stat: f_val not finite: %s", f_val)
             return float("nan"), float("nan")
         return float(f_val), float(p_val)
     except Exception as exc:
-        logger.warning(
-            "robust_first_stage_cluster_stat: f_test failed: %s, trying t_test", exc
-        )
+        logger.warning("robust_first_stage_cluster_stat: f_test failed: %s, trying t_test", exc)
         try:
             t_res = robust.t_test(R)
             t_val = _scalar_from_array(t_res.tvalue)
@@ -3557,9 +3577,7 @@ def robust_first_stage_cluster_stat(
                 return float("nan"), float("nan")
             return float(t_val**2), float(p_val)
         except Exception as exc2:
-            logger.warning(
-                "robust_first_stage_cluster_stat: t_test also failed: %s", exc2
-            )
+            logger.warning("robust_first_stage_cluster_stat: t_test also failed: %s", exc2)
             return float("nan"), float("nan")
 
 
@@ -3624,9 +3642,7 @@ def _build_first_stage_report(
     n_clusters = 0
     if cluster_groups is not None and len(cluster_groups) > 0:
         try:
-            cluster_f, cluster_p = robust_first_stage_cluster_stat(
-                fitted, cluster_groups
-            )
+            cluster_f, cluster_p = robust_first_stage_cluster_stat(fitted, cluster_groups)
             n_clusters = int(len(np.unique(cluster_groups)))
         except Exception as exc:
             logger.warning("_build_first_stage_report: cluster stat failed: %s", exc)
@@ -3690,18 +3706,35 @@ def fit_first_stage(
         if "x_age_hours" not in x_cols:
             x_cols.append("x_age_hours")
 
+    # Защита от вырожденных и слишком редких фиктивных переменных.
+    x_cols = _filter_cox_covariates(
+        df=model_data,
+        cols=x_cols,
+        required=[],
+        event=None,
+        var_floor=1e-12,
+        min_binary_obs=max(10, int(opts.min_events_per_covariate)),
+        min_binary_events=0,
+    )
+
     required = {"PeakLoad", "Z"} | set(x_cols)
     missing = required.difference(set(model_data.columns))
 
     if missing:
         raise KeyError(f"Missing first-stage columns: {sorted(missing)}")
 
+    # ─── x_age_hours exclusion from first stage (econometric justification) ───
+    # x_age_hours is an interaction term (Age × Hours) that affects the structural
+    # equation (Cox model) but is NOT a confounder of PeakLoad selection.
+    # Including it in the first stage would bias v_hat (the control function),
+    # because the IV instrument Z would be regressed on a structural effect
+    # rather than only on the endogenous confounder.
+    # This creates an asymmetry: x_age_hours is in Cox but not in first_stage.
+    # This is intentional and correct per the Control Function literature.
     first_stage_cols = [c for c in x_cols if c != "x_age_hours"]
     cols_for_fit = ["Z"] + first_stage_cols
 
-    if not np.all(
-        np.isfinite(model_data[cols_for_fit + ["PeakLoad"]].to_numpy(dtype=float))
-    ):
+    if not np.all(np.isfinite(model_data[cols_for_fit + ["PeakLoad"]].to_numpy(dtype=float))):
         raise ValueError("First-stage input contains non-finite values")
 
     z_values = model_data["Z"].astype(float).to_numpy()
@@ -3840,19 +3873,11 @@ def _fit_cox_model(
 ) -> CoxPHFitter:
     """
     Fit Cox PH model with optional cluster-robust standard errors.
-
-    Parameters
-    ----------
-    cluster_col : str, optional
-        Column name for cluster IDs. If provided and present in model_data,
-        lifelines computes cluster-robust (sandwich) standard errors.
-        The column is NOT included as a regressor.
-        Fail-closed: if cluster_col is requested but missing, raises ValueError.
+    Includes defensive sanitization and robust->non-robust fallback
+    for lifelines ambiguous-array bugs.
     """
-    import sys
     subset = ["time", "event"] + list(covariate_cols)
 
-    # ─── Cluster-robust: добавить cluster_col в subset, НЕ в регрессоры ───
     use_cluster = False
     if cluster_col is not None:
         if cluster_col in covariate_cols:
@@ -3868,36 +3893,82 @@ def _fit_cox_model(
         subset.append(cluster_col)
         use_cluster = True
 
-    df = model_data[subset]
-    cph = CoxPHFitter(penalizer=float(penalizer))
+    df = model_data.loc[:, subset].copy().reset_index(drop=True)
 
-    with warnings.catch_warnings(record=True) as caught_warnings:
-        warnings.simplefilter("always")
+    # Жёсткая нормализация типов.
+    df["time"] = pd.to_numeric(df["time"], errors="coerce").astype(float)
+    df["event"] = pd.to_numeric(df["event"], errors="coerce").astype(int)
 
-        fit_kwargs: Dict[str, Any] = {
-            "duration_col": "time",
-            "event_col": "event",
-            "robust": robust,
-            "show_progress": False,
-        }
+    for col in covariate_cols:
+        df[col] = pd.to_numeric(df[col], errors="coerce").astype(float)
 
-        if use_cluster:
-            fit_kwargs["cluster_col"] = cluster_col
-            logger.info(
-                "Cox fit with cluster-robust SE: cluster_col='%s', "
-                "n_clusters=%d",
-                cluster_col,
-                df[cluster_col].nunique(),
+    if use_cluster:
+        if df[cluster_col].isna().any():
+            raise ValueError(f"cluster_col='{cluster_col}' contains NaNs")
+        if not np.issubdtype(df[cluster_col].dtype, np.number):
+            codes, _ = pd.factorize(df[cluster_col], sort=False)
+            df[cluster_col] = codes.astype(int)
+
+    # Чистка времени и событий.
+    time_vals = df["time"].to_numpy(dtype=float)
+    event_vals = df["event"].to_numpy(dtype=int)
+
+    if not np.all(np.isfinite(time_vals)):
+        raise ValueError("Cox input: time contains non-finite values")
+
+    if not np.all(time_vals > 0):
+        raise ValueError("Cox input: time must be strictly positive")
+
+    if not np.all(np.isin(event_vals, [0, 1])):
+        raise ValueError("Cox input: event must be binary 0/1")
+
+    if covariate_cols:
+        X = df[covariate_cols].to_numpy(dtype=float)
+        if not np.all(np.isfinite(X)):
+            raise ValueError("Cox input: covariates contain non-finite values")
+
+    # Небольшая защита от нестабильных tie-путей в некоторых версиях lifelines.
+    df = df.sort_values(["time"], kind="mergesort").reset_index(drop=True)
+
+    fit_kwargs: Dict[str, Any] = {
+        "duration_col": "time",
+        "event_col": "event",
+        "show_progress": False,
+    }
+
+    if use_cluster:
+        fit_kwargs["cluster_col"] = cluster_col
+        logger.info(
+            "Cox fit with cluster-robust SE: cluster_col='%s', n_clusters=%d",
+            cluster_col,
+            int(df[cluster_col].nunique()),
+        )
+
+    def _do_fit(use_robust: bool) -> CoxPHFitter:
+        cph_local = CoxPHFitter(penalizer=float(penalizer))
+
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("always")
+            cph_local.fit(df, robust=use_robust, **fit_kwargs)
+
+        warn_summary = _summarize_warnings(caught_warnings)
+        if warn_summary:
+            raise RuntimeError(f"Cox convergence warnings: {warn_summary}")
+
+        return cph_local
+
+    try:
+        cph = _do_fit(bool(robust))
+    except ValueError as exc:
+        if bool(robust) and _is_ambiguous_array_error(exc):
+            logger.warning(
+                "Cox robust=True fit failed with ambiguous-array ValueError. "
+                "Retrying with robust=False. Original error: %s",
+                exc,
             )
-
-        try:
-            cph.fit(df, **fit_kwargs)
-        except Exception as fit_exc:
+            cph = _do_fit(False)
+        else:
             raise
-
-    warn_summary = _summarize_warnings(caught_warnings)
-    if warn_summary:
-        raise RuntimeError(f"Cox convergence warnings: {warn_summary}")
 
     ll = _get_cox_log_likelihood(cph)
     if not math.isfinite(ll):
@@ -3908,6 +3979,7 @@ def _fit_cox_model(
 
     if not np.all(np.isfinite(params)):
         raise RuntimeError("Cox non-finite coefficients")
+
     if not np.all(np.isfinite(ses)):
         raise RuntimeError("Cox non-finite standard errors")
 
@@ -3937,8 +4009,7 @@ def _fit_cox_model_cluster(
     """
     if cluster_col is not None and cluster_col not in model_data.columns:
         raise ValueError(
-            f"cluster_col='{cluster_col}' explicitly requested "
-            f"but not found in model_data columns"
+            f"cluster_col='{cluster_col}' explicitly requested but not found in model_data columns"
         )
 
     # If _fit_cox_model already accepts cluster_col (P0-6 applied):
@@ -3955,8 +4026,7 @@ def _fit_cox_model_cluster(
         # Fallback: _fit_cox_model doesn't accept cluster_col yet
         if cluster_col is not None:
             logger.warning(
-                "_fit_cox_model does not support cluster_col; "
-                "fitting without cluster-robust SE"
+                "_fit_cox_model does not support cluster_col; fitting without cluster-robust SE"
             )
         return _fit_cox_model(
             model_data=model_data,
@@ -3977,9 +4047,132 @@ def _min_events_required_from_count(
     )
 
 
-def compute_vif(
-    design_matrix: np.ndarray, names: Optional[List[str]] = None
-) -> Dict[str, float]:
+def _filter_cox_covariates(
+    df: pd.DataFrame,
+    cols: List[str],
+    required: Optional[List[str]] = None,
+    event: Optional[np.ndarray] = None,
+    var_floor: float = 1e-12,
+    min_binary_obs: int = 10,
+    min_binary_events: int = 0,
+) -> List[str]:
+    """
+    Фильтрует ковариаты до подачи в Cox / first stage.
+
+    Безопасно обрабатывает:
+    - event=None;
+    - пустые колонки;
+    - неконечные значения;
+    - вырожденные колонки;
+    - редкие бинарные фиктивные переменные;
+    - separation / мало событий в бинарных группах, если задан event.
+    """
+    required_set = set(required or [])
+    kept: List[str] = []
+    seen: set = set()
+
+    if event is None:
+        event_arr = None
+    else:
+        event_arr = np.asarray(event, dtype=bool).reshape(-1)
+        if event_arr.size != len(df):
+            raise ValueError("event vector length mismatch in covariate filter")
+
+    for col in cols:
+        if col in seen:
+            continue
+        seen.add(col)
+
+        if col not in df.columns:
+            if col in required_set:
+                raise KeyError(f"Required covariate '{col}' not found")
+            logger.warning("Covariate '%s' not found in df; dropped", col)
+            continue
+
+        vals = pd.to_numeric(df[col], errors="coerce").to_numpy(dtype=float)
+
+        if not np.all(np.isfinite(vals)):
+            if col in required_set:
+                raise ValueError(f"Required covariate '{col}' contains non-finite values")
+            logger.warning("Covariate '%s' contains non-finite values; dropped", col)
+            continue
+
+        if vals.size == 0:
+            if col in required_set:
+                raise ValueError(f"Required covariate '{col}' is empty")
+            logger.warning("Covariate '%s' is empty; dropped", col)
+            continue
+
+        std_val = float(np.std(vals, ddof=0))
+        if (not math.isfinite(std_val)) or std_val <= var_floor:
+            if col in required_set:
+                raise ValueError(
+                    f"Required covariate '{col}' is degenerate (std <= {var_floor})"
+                )
+            logger.warning(
+                "Covariate '%s' is degenerate (std=%.3g); dropped",
+                col,
+                std_val,
+            )
+            continue
+
+        uniq = np.unique(vals)
+
+        # Почти бинарная колонка: проверяем редкость и события по группам.
+        if uniq.size <= 2:
+            if uniq.size == 2:
+                mask_one = vals == uniq[-1]
+            else:
+                mask_one = np.zeros_like(vals, dtype=bool)
+
+            n_one = int(mask_one.sum())
+            n_zero = int(vals.size - n_one)
+
+            if n_one < min_binary_obs or n_zero < min_binary_obs:
+                if col in required_set:
+                    raise ValueError(f"Required binary covariate '{col}' is too rare")
+                logger.warning(
+                    "Binary covariate '%s' is too rare: n_one=%d, n_zero=%d; dropped",
+                    col,
+                    n_one,
+                    n_zero,
+                )
+                continue
+
+            if event_arr is not None and min_binary_events > 0:
+                e_one = int(np.logical_and(event_arr, mask_one).sum())
+                e_zero = int(np.logical_and(event_arr, ~mask_one).sum())
+
+                bad = (
+                    e_one < min_binary_events
+                    or e_zero < min_binary_events
+                    or e_one == 0
+                    or e_zero == 0
+                )
+
+                if bad:
+                    if col in required_set:
+                        raise ValueError(
+                            f"Required binary covariate '{col}' causes separation "
+                            f"or has too few events"
+                        )
+                    logger.warning(
+                        "Binary covariate '%s' causes separation or has too few events: "
+                        "e_one=%d/%d, e_zero=%d/%d; dropped",
+                        col,
+                        e_one,
+                        n_one,
+                        e_zero,
+                        n_zero,
+                    )
+                    continue
+
+        kept.append(col)
+
+    return kept
+
+
+def compute_vif(design_matrix: np.ndarray, names: Optional[List[str]] = None) -> Dict[str, float]:
     X = np.asarray(design_matrix, dtype=float)
 
     if X.shape[1] <= 1:
@@ -4038,12 +4231,28 @@ def fit_naive_cox(
 
     model_data = data[["time", "event", "PeakLoad"]].copy()
 
+    # Сохраняем cluster_col для кластерных стандартных ошибок.
+    if opts.cluster_col is not None and opts.cluster_col in data.columns:
+        model_data[opts.cluster_col] = data[opts.cluster_col]
+
     x_cols = _add_design_x_columns(
         model_data=model_data,
         source_data=data,
         extra_x_cols=opts.extra_x_cols,
         brand_encoding=opts.brand_encoding,
         brand_reference_code=opts.brand_reference_code,
+    )
+
+    event_arr = model_data["event"].astype(bool).to_numpy()
+
+    x_cols = _filter_cox_covariates(
+        df=model_data,
+        cols=x_cols,
+        required=[],
+        event=event_arr,
+        var_floor=1e-12,
+        min_binary_obs=max(10, int(opts.min_events_per_covariate)),
+        min_binary_events=max(1, int(opts.min_events_per_covariate)),
     )
 
     covariate_cols = ["PeakLoad"] + x_cols
@@ -4055,9 +4264,7 @@ def fit_naive_cox(
     min_events = _min_events_required_from_count(len(covariate_cols), opts)
 
     if n_events < min_events:
-        raise RuntimeError(
-            f"Naive Cox: too few events {n_events} < required {min_events}"
-        )
+        raise RuntimeError(f"Naive Cox: too few events {n_events} < required {min_events}")
 
     attempted: List[float] = []
     last_exc: Optional[BaseException] = None
@@ -4078,8 +4285,16 @@ def fit_naive_cox(
             if "PeakLoad" not in cph.params_.index:
                 raise RuntimeError("PeakLoad coefficient not found")
 
-            gamma_hat = float(cph.params_.loc["PeakLoad"])
-            standard_error = float(cph.standard_errors_.loc["PeakLoad"])
+            gamma_hat = _safe_series_scalar(
+                cph.params_,
+                "PeakLoad",
+                "Naive Cox params",
+            )
+            standard_error = _safe_series_scalar(
+                cph.standard_errors_,
+                "PeakLoad",
+                "Naive Cox standard errors",
+            )
 
             ses_all = cph.standard_errors_.to_numpy(dtype=float)
             max_se = float(np.max(np.abs(ses_all)))
@@ -4090,9 +4305,7 @@ def fit_naive_cox(
             warnings_list: List[str] = []
 
             if pen > 0.0:
-                warnings_list.append(
-                    f"Naive Cox estimate is regularized (penalizer={pen})."
-                )
+                warnings_list.append(f"Naive Cox estimate is regularized (penalizer={pen}).")
 
             convergence_info = ConvergenceInfo(
                 penalizer=float(pen),
@@ -4156,7 +4369,6 @@ def fit_cf_cox(
                 partial_f_z,
             )
 
-
     if first_stage.report.weak_instrument and opts.fail_on_weak_instrument:
         raise RuntimeError(
             "Weak instrument detected in first stage. "
@@ -4171,7 +4383,6 @@ def fit_cf_cox(
     if not np.all(np.isfinite(residuals)):
         raise ValueError("Residuals contain NaN or Inf.")
 
-
     model_data = data[["time", "event", "PeakLoad"]].copy()
     original_peakload = data["PeakLoad"].astype(float).to_numpy()
 
@@ -4183,6 +4394,24 @@ def fit_cf_cox(
         brand_reference_code=opts.brand_reference_code,
     )
 
+    # PeakLoad обязан быть невырожденным.
+    peakload_vals = model_data["PeakLoad"].astype(float).to_numpy()
+    peakload_std = float(np.std(peakload_vals, ddof=0))
+    if (not math.isfinite(peakload_std)) or peakload_std <= 1e-12:
+        raise ValueError("fit_cf_cox: PeakLoad is degenerate (std <= 1e-12)")
+
+    event_arr = model_data["event"].astype(bool).to_numpy()
+
+    # Фильтруем X-ковариаты до построения Cox-модели.
+    x_cols = _filter_cox_covariates(
+        df=model_data,
+        cols=x_cols,
+        required=[],
+        event=event_arr,
+        var_floor=1e-12,
+        min_binary_obs=max(10, int(opts.min_events_per_covariate)),
+        min_binary_events=max(1, int(opts.min_events_per_covariate)),
+    )
 
     # ─── P0-6: копируем cluster_id в model_data для cluster-robust Cox ──
     # Fail-closed: если cluster_col явно запрошен, но отсутствует в data,
@@ -4200,7 +4429,6 @@ def fit_cf_cox(
             )
         model_data[opts.cluster_col] = data[opts.cluster_col].to_numpy()
 
-
     if opts.center_peakload is not None:
         cp = float(opts.center_peakload)
 
@@ -4209,10 +4437,9 @@ def fit_cf_cox(
 
         model_data["PeakLoad"] = model_data["PeakLoad"] - cp
 
-
     covariate_cols_before_cf = ["PeakLoad"] + x_cols
     _validate_survival_frame(model_data, covariate_cols_before_cf)
-    
+
     # ─── ФИЛЬТРАЦИЯ КОЛОНОК С НУЛЕВОЙ ДИСПЕРСИЕЙ ───────────────────────
     # Это предотвращает баги lifelines и ошибки неоднозначности массивов
     valid_x_cols = []
@@ -4222,7 +4449,7 @@ def fit_cf_cox(
         else:
             logger.warning(f"Column {c} has zero variance, removing from model.")
     x_cols = valid_x_cols
-    
+
     if model_data["PeakLoad"].std() <= 1e-12:
         raise RuntimeError("CF Cox: PeakLoad has zero variance")
     # ───────────────────────────────────────────────────────────────────
@@ -4235,23 +4462,27 @@ def fit_cf_cox(
     )
     model_data = cf_cols.df_with_cf
     v_hat_cols = cf_cols.column_names
-    
-    # Фильтрация CF колонок с нулевой дисперсией
-    valid_v_hat_cols = []
-    for c in v_hat_cols:
-        if model_data[c].std() > 1e-12:
-            valid_v_hat_cols.append(c)
-        else:
-            logger.warning(f"CF column {c} has zero variance, removing from model.")
-    v_hat_cols = valid_v_hat_cols
-    
-    if not v_hat_cols:
-        raise ValueError("fit_cf_cox: all CF columns have zero variance")
+
+    event_arr = model_data["event"].astype(bool).to_numpy()
+
+    # CF-колонки тоже защищаем от вырожденных случаев.
+    v_hat_cols = _filter_cox_covariates(
+        df=model_data,
+        cols=v_hat_cols,
+        required=[],
+        event=event_arr,
+        var_floor=1e-12,
+        min_binary_obs=max(10, int(opts.min_events_per_covariate)),
+        min_binary_events=max(1, int(opts.min_events_per_covariate)),
+    )
 
     if not v_hat_cols:
-        raise ValueError("fit_cf_cox: no CF columns created")
+        raise ValueError("fit_cf_cox: no valid CF columns created after filtering")
 
     covariate_cols = ["PeakLoad"] + x_cols + v_hat_cols
+
+    # Убираем возможные дубли имён колонок, сохраняя порядок.
+    covariate_cols = list(dict.fromkeys(covariate_cols))
 
     n_events = int(np.sum(model_data["event"].astype(int).to_numpy()))
     n = len(model_data)
@@ -4267,39 +4498,34 @@ def fit_cf_cox(
     if not np.all(np.isfinite(model_data[_check_cols].to_numpy(dtype=float))):
         raise ValueError("fit_cf_cox: non-finite data after CF construction")
 
+    # Partial-out diagnostic: PL_hat ~ X (без инструмента Z).
+    # Конвенция PL_HAT_EXOG_CONVENTION определяет, включать ли Z:
+    # "exclude_instrument" — Z исключается из экзогенной части (по умолчанию).
+    forbidden_partial_out = {"const", "intercept"}
+    if PL_HAT_EXOG_CONVENTION == "exclude_instrument":
+        forbidden_partial_out.add("Z")
 
-    # Partial-out diagnostic: PL_hat ~ X + Z
-    pl_hat = original_peakload - residuals
-
+    pl_hat = np.asarray(first_stage.fitted.fittedvalues, dtype=float).reshape(-1)
+    if len(pl_hat) != len(data):
+        raise ValueError("fit_cf_cox: first-stage fitted values length mismatch")
     if not np.all(np.isfinite(pl_hat)):
         raise ValueError("fit_cf_cox: non-finite PL_hat")
-
-
     training_pl_hat_mean = float(np.mean(pl_hat))
-
     partial_out_all_betas: Dict[str, float] = {}
     training_x_means: Dict[str, float] = {}
-
     if x_cols:
         try:
             diag_df = model_data[x_cols].copy()
-
-            if "Z" in data.columns:
-                diag_df["Z"] = data["Z"].astype(float).to_numpy()
-
+            # Исключаем Z согласно конвенции PL_HAT_EXOG_CONVENTION
+            diag_df = diag_df[[c for c in diag_df.columns if c not in forbidden_partial_out]]
             X_design = sm.add_constant(diag_df, has_constant="add")
             ols = sm.OLS(pl_hat, X_design).fit()
-
             partial_out_all_betas = {
                 str(col): float(ols.params[col])
                 for col in diag_df.columns
                 if col in ols.params.index
             }
-            training_x_means = {
-                str(col): float(diag_df[col].mean()) for col in diag_df.columns
-            }
-
-
+            training_x_means = {str(col): float(diag_df[col].mean()) for col in diag_df.columns}
         except Exception:
             partial_out_all_betas = {}
             training_x_means = {}
@@ -4321,7 +4547,7 @@ def fit_cf_cox(
             )
 
             # ─── БЕЗОПАСНОЕ ИЗВЛЕЧЕНИЕ КОЭФФИЦИЕНТОВ ───────────────────────
-            # Используем фильтрацию по индексу вместо .loc[], чтобы избежать 
+            # Используем фильтрацию по индексу вместо .loc[], чтобы избежать
             # ValueError при дублирующихся индексах или возврате массивов
             def _safe_extract(series, key):
                 vals = series[series.index == key]
@@ -4346,7 +4572,7 @@ def fit_cf_cox(
 
             gamma_hat = _safe_extract(cph.params_, "PeakLoad")
             naive_model_se = _safe_extract(cph.standard_errors_, "PeakLoad")
-            
+
             if len(v_hat_cols) > 1:
                 v_hat_coefs = [_safe_extract(cph.params_, vc) for vc in v_hat_cols]
                 cf_coef = float(np.sqrt(sum(c * c for c in v_hat_coefs)))
@@ -4362,15 +4588,11 @@ def fit_cf_cox(
             # Debug: check types
             import sys
 
-
-            if not all(
-                np.isfinite(x) for x in [gamma_hat, naive_model_se, cf_coef, max_se]
-            ):
+            if not all(np.isfinite(x) for x in [gamma_hat, naive_model_se, cf_coef, max_se]):
                 raise RuntimeError("CF Cox: non-finite estimates")
 
             if max_se > opts.cox_se_threshold:
                 raise RuntimeError(f"CF Cox: too-large max_se={max_se}")
-
 
             convergence_info = ConvergenceInfo(
                 penalizer=float(pen),
@@ -4387,9 +4609,7 @@ def fit_cf_cox(
                 )
 
             if first_stage.report.weak_instrument:
-                warnings_list.append(
-                    "Weak instrument detected, but fail_on_weak_instrument=False."
-                )
+                warnings_list.append("Weak instrument detected, but fail_on_weak_instrument=False.")
 
             # VIF diagnostics
             vif_peakload = None
@@ -4443,11 +4663,92 @@ def fit_cf_cox(
             }
             basis_meta.update(cf_cols.basis_kwargs)
 
+            # ─── Патч 4: propagation interaction_params к CFModelResult ─────
+            interaction_params = data.attrs.get("interaction_params", None)
+            if interaction_params is not None:
+                basis_meta["interaction_params"] = interaction_params
+
+            # ─── Bootstrap SE for generated regressars (Murphy-Topel correction) ───
+            # Generated regressor: v_hat (first-stage residuals) introduces
+            # additional uncertainty not captured by naive SE from CoxPHFitter.
+            # Bootstrap accounts for this uncertainty.
+            bootstrap_se_value: Optional[float] = None
+            if opts.n_bootstrap > 0:
+                try:
+                    logger.info(
+                        "Running bootstrap SE for CF Cox (n_bootstrap=%d)...", opts.n_bootstrap
+                    )
+                    bootstrap_result = bootstrap_cf_standard_error(
+                        data=data,
+                        n_bootstrap=opts.n_bootstrap,
+                        seed_sequence=np.random.SeedSequence(int(np.random.randint(0, 2**31))),
+                        config=SimulationConfig(
+                            sims_per_scenario=1,
+                            n_samples=len(data),
+                            contamination=False,
+                            n_jobs=1,
+                            seed=int(np.random.randint(0, 2**31)),
+                            n_bootstrap=opts.n_bootstrap,
+                            bootstrap_jobs=_bootstrap_jobs,
+                            baseline_hazard=DEFAULT_BASELINE_HAZARD,
+                            censoring_scale=1e12,
+                            dgp=DGPParameters(
+                                gamma=0.5,
+                                rho=0.7,
+                                delta=0.7,
+                                intercept=0.5,
+                                structural_intercept=0.5,
+                                first_stage_z_coef=0.5,
+                                clip_lp=None,
+                                corr_zu=0.0,
+                                baseline_family="weibull",
+                                baseline_shape=1.88,
+                                brand_encoding="dummies",
+                                brand_reference_code=0,
+                                beta_age_hours=0.15,
+                                use_real_covariates=False,
+                                beta_eqi=0.0,
+                                n_enterprises=500,
+                                use_enterprise_quality=False,
+                            ),
+                        ),
+                        fit_opts=opts,
+                    )
+                    bootstrap_se_value = bootstrap_result.bootstrap_se
+                    if bootstrap_se_value is not None:
+                        logger.info(
+                            "Bootstrap SE=%.6e, naive SE=%.6e, ratio=%.2f",
+                            bootstrap_se_value,
+                            naive_model_se,
+                            bootstrap_se_value / naive_model_se if naive_model_se > 0 else float("inf"),
+                        )
+                        # Add note about generated regressors
+                        warnings_list.append(
+                            f"Bootstrap SE computed (n={opts.n_bootstrap}): "
+                            f"SE={bootstrap_se_value:.6e} vs naive SE={naive_model_se:.6e} "
+                            f"(ratio={bootstrap_se_value / naive_model_se:.2f} if naive > 0). "
+                            "Naive SE underestimates uncertainty for generated regressors."
+                        )
+                    else:
+                        logger.warning(
+                            "Bootstrap SE computation failed (success rate %.1f%%), "
+                            "falling back to naive SE.",
+                            bootstrap_result.success_rate * 100,
+                        )
+                except Exception as bootstrap_exc:
+                    logger.warning(
+                        "Bootstrap SE computation raised exception: %s. "
+                        "Falling back to naive SE.",
+                        bootstrap_exc,
+                    )
+
+            se_type = "bootstrap" if bootstrap_se_value is not None else "naive"
+
             return CFModelResult(
                 gamma_hat=gamma_hat,
                 naive_model_se=naive_model_se,
-                bootstrap_se=None,
-                se_type="naive",
+                bootstrap_se=bootstrap_se_value,
+                se_type=se_type,
                 cf_coef=cf_coef,
                 cf_coef_signed=cf_coef_signed,
                 cph=cph,
@@ -4687,6 +4988,7 @@ def endogeneity_lr_test(
             note=format_exception(exc, save_traceback=False),
         )
 
+
 def interaction_lr_test(
     data: pd.DataFrame,
     first_stage: FirstStageFit,
@@ -4724,15 +5026,11 @@ def interaction_lr_test(
         # ─── Precondition checks ─────────────────────────────────────
         required = {"time", "event", "PeakLoad"}
         if not required.issubset(data.columns):
-            result["note"] = (
-                f"Missing required columns: {sorted(required - set(data.columns))}"
-            )
+            result["note"] = f"Missing required columns: {sorted(required - set(data.columns))}"
             return result
 
         if interaction_col not in data.columns:
-            result["note"] = (
-                f"Interaction column '{interaction_col}' not found in data"
-            )
+            result["note"] = f"Interaction column '{interaction_col}' not found in data"
             return result
 
         n_events = int(np.sum(data["event"].astype(int).to_numpy()))
@@ -4759,9 +5057,7 @@ def interaction_lr_test(
         # Fail-closed: если cluster_col запрошен, но отсутствует — это баг.
         if opts.cluster_col is not None:
             if opts.cluster_col in x_cols:
-                result["note"] = (
-                    f"cluster_col='{opts.cluster_col}' must NOT be in x_cols"
-                )
+                result["note"] = f"cluster_col='{opts.cluster_col}' must NOT be in x_cols"
                 return result
             if opts.cluster_col not in data.columns:
                 result["note"] = (
@@ -4773,9 +5069,7 @@ def interaction_lr_test(
 
         # Ensure interaction column is present in model_data
         if interaction_col not in model_data.columns:
-            model_data[interaction_col] = (
-                data[interaction_col].astype(float).to_numpy()
-            )
+            model_data[interaction_col] = data[interaction_col].astype(float).to_numpy()
         if interaction_col not in x_cols:
             x_cols.append(interaction_col)
 
@@ -4853,8 +5147,7 @@ def interaction_lr_test(
 
         if cph_full is None or cph_restricted is None or used_pen is None:
             result["note"] = (
-                f"Both models failed to fit. "
-                f"Last error: {format_exception(last_exc, False)}"
+                f"Both models failed to fit. Last error: {format_exception(last_exc, False)}"
             )
             return result
 
@@ -4901,13 +5194,10 @@ def interaction_lr_test(
         # ─── Interaction coefficient from full model ─────────────────
         if interaction_col in cph_full.params_.index:
             result["beta_hat"] = float(cph_full.params_.loc[interaction_col])
-            result["se_hat"] = float(
-                cph_full.standard_errors_.loc[interaction_col]
-            )
+            result["se_hat"] = float(cph_full.standard_errors_.loc[interaction_col])
         else:
             result["note"] = (
-                f"Interaction column '{interaction_col}' not found "
-                f"in full model params"
+                f"Interaction column '{interaction_col}' not found in full model params"
             )
 
         return result
@@ -4915,6 +5205,7 @@ def interaction_lr_test(
     except Exception as exc:
         result["note"] = format_exception(exc, save_traceback=False)
         return result
+
 
 # ---------------------------------------------------------------------------
 # Bootstrap helpers
@@ -5175,6 +5466,11 @@ def bootstrap_cf_standard_error(
     if fit_opts is None:
         fit_opts = fit_options_from_config(config)
 
+    # ★ DISABLE NESTED BOOTSTRAP: workers call fit_cf_cox which would
+    # otherwise re-enter bootstrap_cf_standard_error → exponential blow-up.
+    import dataclasses
+    worker_fit_opts = dataclasses.replace(fit_opts, n_bootstrap=0)
+
     try:
         n_bootstrap = int(n_bootstrap)
     except Exception:
@@ -5219,7 +5515,7 @@ def bootstrap_cf_standard_error(
 
     def safe_worker(seed_int: int):
         try:
-            est, reason = worker(seed_int, data, config, fit_opts)
+            est, reason = worker(seed_int, data, config, worker_fit_opts)
 
             if reason is None and np.isfinite(est):
                 return float(est), ""
@@ -5354,6 +5650,7 @@ def check_proportional_hazards(
     except Exception as exc:  # noqa: BLE001
         return f"PH check failed or flagged: {format_exception(exc, False)}"
 
+
 # ---------------------------------------------------------------------------
 # P0-4: Structured PH diagnostics report
 # ---------------------------------------------------------------------------
@@ -5407,22 +5704,33 @@ def ph_diagnostics_report(
     missing_cols = [c for c in covariates if c not in data.columns]
     if missing_cols:
         report["status"] = "ERROR"
-        report["error"] = (
-            "Covariates missing in data: " + str(sorted(missing_cols))
-        )
+        report["error"] = "Covariates missing in data: " + str(sorted(missing_cols))
         return report
 
     ph_data_cols = ["time", "event"] + model_cols_in_data
-    ph_data = data[ph_data_cols].astype(float)
+
+    # ★ FIX: lifelines требует cluster_col для вычисления Schoenfeld residuals
+    cluster_col_name = getattr(cph, "cluster_col", None)
+    if (
+        cluster_col_name
+        and cluster_col_name in data.columns
+        and cluster_col_name not in ph_data_cols
+    ):
+        ph_data_cols.append(cluster_col_name)
+
+    ph_data = data[ph_data_cols].copy()
+    # Приводим к float только числовые ковариаты, cluster_id может быть строкой
+    for col in ph_data_cols:
+        if col != cluster_col_name:
+            ph_data[col] = pd.to_numeric(ph_data[col], errors="coerce").astype(float)
 
     # ─── Попытка 1: proportional_hazard_test ─────────────────────────
     ph_result = None
     try:
         from lifelines.statistics import proportional_hazard_test
+
         try:
-            ph_result = proportional_hazard_test(
-                cph, ph_data, time_transform=time_transform
-            )
+            ph_result = proportional_hazard_test(cph, ph_data, time_transform=time_transform)
         except TypeError:
             try:
                 ph_result = proportional_hazard_test(cph, ph_data)
@@ -5455,10 +5763,7 @@ def ph_diagnostics_report(
                     except (KeyError, TypeError, ValueError, IndexError):
                         continue
 
-                    if (
-                        not math.isfinite(test_stat)
-                        or not math.isfinite(p_value)
-                    ):
+                    if not math.isfinite(test_stat) or not math.isfinite(p_value):
                         report["variables"][cov_name] = {
                             "test_statistic": None,
                             "p_value": None,
@@ -5486,8 +5791,7 @@ def ph_diagnostics_report(
             report["status"] = "ERROR"
             report["error"] = (
                 "Both proportional_hazard_test and "
-                "compute_schoenfeld_residuals failed: "
-                + format_exception(exc, False)
+                "compute_schoenfeld_residuals failed: " + format_exception(exc, False)
             )
             return report
 
@@ -5525,7 +5829,7 @@ def ph_diagnostics_report(
             g_centered = g_t - float(np.mean(g_t))
             r_centered = residuals - float(np.mean(residuals))
 
-            g_var = float(np.sum(g_centered ** 2))
+            g_var = float(np.sum(g_centered**2))
             if g_var < 1e-12:
                 report["variables"][cov] = {
                     "test_statistic": None,
@@ -5554,17 +5858,14 @@ def ph_diagnostics_report(
                 se_slope = 1e-12
 
             z_stat = slope / se_slope
-            test_stat = z_stat ** 2
+            test_stat = z_stat**2
 
             if stats_mod is not None:
                 p_value = float(stats_mod.chi2.sf(test_stat, df=1))
             else:
                 p_value = float(math.exp(-test_stat / 2.0))
 
-            if (
-                not math.isfinite(test_stat)
-                or not math.isfinite(p_value)
-            ):
+            if not math.isfinite(test_stat) or not math.isfinite(p_value):
                 report["variables"][cov] = {
                     "test_statistic": None,
                     "p_value": None,
@@ -5586,8 +5887,7 @@ def ph_diagnostics_report(
 
     # ─── Глобальный тест ─────────────────────────────────────────────
     valid_vars = {
-        k: v for k, v in report["variables"].items()
-        if v.get("test_statistic") is not None
+        k: v for k, v in report["variables"].items() if v.get("test_statistic") is not None
     }
     if valid_vars:
         all_stats = [v["test_statistic"] for v in valid_vars.values()]
@@ -5598,11 +5898,7 @@ def ph_diagnostics_report(
         if stats_mod is not None:
             global_p = float(stats_mod.chi2.sf(global_stat, df_global))
         else:
-            all_p = [
-                v["p_value"]
-                for v in valid_vars.values()
-                if v["p_value"] is not None
-            ]
+            all_p = [v["p_value"] for v in valid_vars.values() if v["p_value"] is not None]
             global_p = float(min(all_p)) if all_p else float("nan")
 
         report["global_test"] = {
@@ -5619,6 +5915,7 @@ def ph_diagnostics_report(
         report["status"] = "PASS"
 
     return report
+
 
 # ---------------------------------------------------------------------------
 # P-12: Kaplan-Meier validator
