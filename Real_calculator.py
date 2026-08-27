@@ -77,6 +77,18 @@ except AttributeError:
     _BUILD_CF_BASIS_AT_PREDICTION = None
 
 from premium_engine import calculate_single_premium
+
+# ─── Параметрический базовый риск и CIF (v3.1) ─────────────────────────────
+try:
+    from parametric_baseline import compute_cif, VALID_PARAMETRIC_FAMILIES
+    HAS_PARAMETRIC_CIF = True
+except ImportError:
+    HAS_PARAMETRIC_CIF = False
+    VALID_PARAMETRIC_FAMILIES = frozenset()
+    logger.info(
+        "parametric_baseline.py не найден: CIF-интегрирование недоступно. "
+        "Используется пропорциональная формула ω·F."
+    )
 from exceptions import ModelLoadError, PredictionError, InvalidInputError
 
 # --- Фаза 7.9: severity_model интеграция ---
@@ -3092,6 +3104,11 @@ def compute_all_peaks(
         print(f"Расчёт для: {label}")
         print(f"{'=' * 60}")
 
+        # ─── Reduced Form: индикация режима ─────────────────────────────
+        model_form = str(cfg.training_meta.get("model_form", "control_function")).lower()
+        if model_form == "reduced_form":
+            print("ℹ️ Режим: REDUCED FORM (предиктивная модель, Z как ковариата)")
+
         try:
             details = compute_full_details(
                 params,
@@ -3270,20 +3287,120 @@ def compute_all_peaks(
             # Любой отказ — share = 1.0
             effective_share = 1.0
 
-        # ★ ИТОГОВАЯ ФОРМУЛА: P(T ≤ t, cause=k) = P(T ≤ t) · ω_k(X)
-        # Это корректно при условии пропорциональности cause-specific hazards.
-        # Ограничение: ω_k(X) не зависит от времени t (предположение proportional
-        # subdistribution hazards).
-        event_probability = adjusted_probability * effective_share
-        event_probability = float(max(0.0, min(1.0, event_probability)))
+        # ======================================================================
+        # ★ ЗАДАЧА B: CIF через численное интегрирование (v3.1)
+        # ======================================================================
+        # Правильная формула для конкурирующих рисков:
+        #   CIF_k(t) = ∫₀ᵗ ω_k(u|X) · f(u|X) du
+        # где f(u|X) = h₀(u)·exp(lp)·exp(-H₀(u)·exp(lp)) — плотность отказа.
+        #
+        # При пропорциональности причин (ω не зависит от t):
+        #   CIF_k(t) = ω_k · F(t) — старая формула как частный случай.
+        #
+        # Параметрический базовый риск (Weibull/Gompertz) даёт гладкую
+        # плотность, которую можно интегрировать. Для Breslow (ступенька)
+        # интегрирование невозможно — сохраняем старую формулу.
+        # ======================================================================
 
-        print(
-            f"Итоговая вероятность страхового события: {fmt_num(event_probability, '.6f')} ({fmt_num(event_probability * 100.0, '.2f')})%"
+        baseline_spec = getattr(params, "baseline_spec", None)
+        if baseline_spec is None:
+            baseline_spec = {"family": "breslow"}
+        baseline_family = str(baseline_spec.get("family", "breslow")).lower()
+
+        use_cif_integration = (
+            HAS_PARAMETRIC_CIF
+            and baseline_family in VALID_PARAMETRIC_FAMILIES
         )
+
+        if use_cif_integration:
+            # ─── CIF через квадратуру Гаусса-Лежандра ─────────────────────
+            lp_value = float(details["lp"])
+
+            # Сезонный множитель влияет на интенсивность отказов →
+            # добавляем log(season_factor) к линейному предиктору
+            if abs(cfg.season_hazard_factor - 1.0) > 1e-12:
+                lp_adjusted = lp_value + math.log(max(cfg.season_hazard_factor, 1e-9))
+            else:
+                lp_adjusted = lp_value
+
+            # ω_k(t|X): константная доля причины (пропорциональная модель).
+            # В будущем можно расширить до зависящей от времени ω(t).
+            def omega_cause_fn(t: float) -> float:
+                """Доля причины отказа в момент времени t."""
+                return float(effective_share)
+
+            try:
+                cif_value = compute_cif(
+                    spec=baseline_spec,
+                    lp=lp_adjusted,
+                    horizon=float(cfg.horizon),
+                    omega_fn=omega_cause_fn,
+                    n_quad=96,
+                )
+
+                # ─── Sanity check: при константной ω CIF ≈ ω·F ───────────
+                proportional_check = adjusted_probability * effective_share
+                cif_diff = abs(cif_value - proportional_check)
+                if cif_diff > 0.02:
+                    logger.warning(
+                        "⚠️ CIF=%.6f отличается от пропорциональной проверки "
+                        "ω·F=%.6f на %.4f. Проверьте согласованность baseline.",
+                        cif_value,
+                        proportional_check,
+                        cif_diff,
+                    )
+                else:
+                    logger.debug(
+                        "CIF sanity check OK: CIF=%.6f ≈ ω·F=%.6f (diff=%.2e)",
+                        cif_value,
+                        proportional_check,
+                        cif_diff,
+                    )
+
+                event_probability = float(min(max(cif_value, 0.0), 1.0))
+                print(
+                    f"  CIF (численное интегрирование, {baseline_family}): "
+                    f"{event_probability:.6f}"
+                )
+
+            except Exception as cif_exc:  # noqa: BLE001
+                logger.warning(
+                    "CIF-интегрирование не удалось (%s). "
+                    "Fallback на пропорциональную формулу ω·F.",
+                    cif_exc,
+                )
+                event_probability = adjusted_probability * effective_share
+                event_probability = float(max(0.0, min(1.0, event_probability)))
+        else:
+            # ─── Старый путь: пропорциональная формула ω·F ────────────────
+            # Используется для базового риска Breslow (ступенчатая функция)
+            # или при отсутствии модуля parametric_baseline.
+            event_probability = adjusted_probability * effective_share
+            event_probability = float(max(0.0, min(1.0, event_probability)))
+        # ======================================================================
+
+        # Печать с указанием метода расчёта
+        if use_cif_integration:
+            method_label = f"CIF ({baseline_family}, квадратура Гаусса-Лежандра)"
+        else:
+            method_label = "пропорциональная формула ω·F"
+        print(
+            f"Итоговая вероятность страхового события: "
+            f"{fmt_num(event_probability, '.6f')} "
+            f"({fmt_num(event_probability * 100.0, '.2f')}%)"
+        )
+        print(f"  Метод расчёта: {method_label}")
         if abs(effective_share - 1.0) > 1e-12:
-            print(
-                f"  (базовая вероятность {fmt_num(adjusted_probability, '.6f')} × effective_share {fmt_num(effective_share, '.3f')})"
-            )
+            if use_cif_integration:
+                print(
+                    f"  (CIF интегрирует плотность отказа с ω={effective_share:.3f}; "
+                    f"базовая P(T≤t)={adjusted_probability:.6f})"
+                )
+            else:
+                print(
+                    f"  (базовая вероятность {fmt_num(adjusted_probability, '.6f')} "
+                    f"× effective_share {fmt_num(effective_share, '.3f')})"
+                )
         if abs(cfg.season_hazard_factor - 1.0) > 1e-12:
             print(
                 f"  (применён сезонный множитель частоты {fmt_num(cfg.season_hazard_factor, '.3f')})"
@@ -3482,6 +3599,13 @@ def display_results(
         gamma_float = float(gamma_value)
         if math.isfinite(gamma_float):
             print(f"\nОценка γ (эффект PeakLoad): {gamma_float:.4f}")
+
+    # ─── Reduced Form: индикация режима ────────────────────────────────
+    model_form = str(cfg.training_meta.get("model_form", "control_function")).lower()
+    if model_form == "reduced_form":
+        print("ℹ️ Модель в режиме REDUCED FORM: результаты предиктивные, не каузальные.")
+    else:
+        print("ℹ️ Модель в режиме CONTROL FUNCTION (2SRI).")
 
     iv_diagnostics = cfg.training_meta.get("iv_diagnostics", {}) or {}
     if isinstance(iv_diagnostics, dict):

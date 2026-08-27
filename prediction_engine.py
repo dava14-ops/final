@@ -52,9 +52,25 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
-# ---------------------------------------------------------------------------
-# Optional scipy for spline basis evaluation
-# ---------------------------------------------------------------------------
+# ─── Параметрический базовый риск (v3.1) ───────────────────────────────────
+try:
+    from parametric_baseline import (
+        BaselineSpec,
+        h0_cumulative as _param_h0_cumulative,
+        individual_density as _param_individual_density,
+        validate_baseline_spec as _validate_baseline_spec,
+        VALID_PARAMETRIC_FAMILIES as _PARAM_FAMILIES,
+        HAS_PARAMETRIC_BASELINE,
+    )
+except ImportError:  # graceful degradation: модуль не обязателен для старых моделей
+    _PARAM_FAMILIES = frozenset()
+    def _param_h0_cumulative(spec, t):  # noqa: E306
+        raise ModelValidationError("parametric_baseline.py недоступен")
+    def _param_individual_density(spec, lp, t):
+        raise ModelValidationError("parametric_baseline.py недоступен")
+    def _validate_baseline_spec(spec):
+        return True
+    HAS_PARAMETRIC_BASELINE = False
 try:
     from scipy import interpolate as _scipy_interpolate
 
@@ -728,6 +744,9 @@ class ModelParameters:
     minor_failure_rate: float = 0.002
     segment: str = "light"
     allow_baseline_extrapolation: bool = False
+
+    # ─── Параметрический базовый риск (v3.1) ──────────────────────
+    baseline_spec: Dict[str, Any] = field(default_factory=lambda: {"family": "breslow"})
 
     def __post_init__(self) -> None:
         current = _try_float(self.calibration_time_horizon, 0.0)
@@ -1436,14 +1455,14 @@ def _baseline_cumulative_hazard_array(
     time_points: np.ndarray,
 ) -> np.ndarray:
     """
-    Baseline cumulative hazard H0(t) via Breslow step-function.
+    Baseline cumulative hazard H0(t).
 
-    Standard non-parametric interpolation using searchsorted.
-    H0(t) = 0 for t < t_(1) (first event time).
-    H0(t) = H0(t_last) for t >= t_last (held constant).
+    Поддерживает два режима:
+      1. Параметрический (Weibull/Gompertz/Exponential): гладкая аналитическая форма.
+      2. Breslow (step-function): классический непараметрический путь.
 
-    The step-function is the mathematically correct maximum-likelihood
-    estimator for the cumulative baseline hazard in the Cox model.
+    Параметрическая ветка включается при наличии baseline_spec.family ∈ {weibull, gompertz, exponential}.
+    Старые модели без baseline_spec автоматически используют Breslow → обратная совместимость.
     """
     time_points = np.asarray(time_points, dtype=float)
 
@@ -1453,6 +1472,14 @@ def _baseline_cumulative_hazard_array(
     if np.any(time_points < 0.0):
         raise InvalidInputError("time horizon cannot be negative")
 
+    # ─── НОВОЕ: параметрическая ветка ───────────────────────────────────
+    spec = _get_baseline_spec(params)
+    family = str(spec.get("family", "breslow")).lower()
+    if family in _PARAM_FAMILIES:
+        _validate_baseline_spec(spec)
+        return _param_h0_cumulative(spec, time_points)
+
+    # ─── СТАРОЕ: Breslow step-function (без изменений) ─────────────────
     times, values = _baseline_arrays(params)
 
     # Breslow step-function interpolation
@@ -1529,8 +1556,28 @@ def baseline_cumulative_hazard(
 
 
 def _check_horizon_within_baseline(params: Any, time_horizon: float) -> None:
-    meta = _get_training_meta(params)
+    """Проверка горизонта предсказания относительно области подгонки базового риска.
 
+    Для параметрических семейств (Weibull/Gompertz/Exponential) экстраполяция
+    разрешена естественно — с предупреждением при сильном выходе за пределы.
+    Для Breslow экстраполяция запрещена, если явно не включена в training_meta.
+    """
+    family = _baseline_family(params)
+
+    # Параметрические семейства экстраполируют естественно.
+    if family in _PARAM_FAMILIES:
+        spec = _get_baseline_spec(params)
+        max_t = spec.get("max_fitted_time")
+        if max_t is not None and time_horizon > 3.0 * float(max_t):
+            logger.warning(
+                "time_horizon %.1f далеко за пределами области подгонки "
+                "базового риска (%.1f). Экстраполяция параметрическая.",
+                time_horizon, float(max_t),
+            )
+        return
+
+    # Старая логика для Breslow — без изменений:
+    meta = _get_training_meta(params)
     allow_extrapolation = _as_bool(
         _dict_get_normalized(meta, "allow_baseline_extrapolation", False),
         False,
@@ -1541,8 +1588,8 @@ def _check_horizon_within_baseline(params: Any, time_horizon: float) -> None:
 
     if time_horizon > max_t + 1e-9:
         msg = (
-            f"time_horizon {time_horizon} exceeds max baseline time {max_t}. "
-            "Baseline extrapolation is disabled."
+            f"time_horizon {time_horizon} превышает максимальное время "
+            f"базового риска {max_t}. Экстраполяция Бреслоу отключена."
         )
 
         if allow_extrapolation:
@@ -1550,7 +1597,7 @@ def _check_horizon_within_baseline(params: Any, time_horizon: float) -> None:
         else:
             raise InvalidInputError(
                 msg
-                + " Set training_meta['allow_baseline_extrapolation']=True to allow."
+                + " Либо включите параметрический базовый риск."
             )
 
 
@@ -1720,6 +1767,20 @@ def validate_model(params: Any) -> bool:
     # Baseline cumulative hazard.
     baseline = _get_field(params, "baseline_cumulative_hazard")
     _validate_baseline_dict(baseline)
+
+    # ─── Параметрический базовый риск (v3.1) ─────────────────────────────
+    baseline_spec = _get_field(params, "baseline_spec")
+    if baseline_spec is not None and isinstance(baseline_spec, dict):
+        fam = str(baseline_spec.get("family", "breslow")).lower()
+        if fam != "breslow":
+            try:
+                from parametric_baseline import validate_baseline_spec
+                validate_baseline_spec(baseline_spec)
+            except ImportError:
+                logger.warning(
+                    "baseline_spec.family='%s', но parametric_baseline.py "
+                    "недоступен для валидации.", fam,
+                )
 
     # Transform info.
     transform_info = _get_field(params, "transform_info")
@@ -2312,6 +2373,24 @@ def _get_cf_meta(params: Any) -> Dict[str, Any]:
     return {}
 
 
+def _get_baseline_spec(params: Any) -> Dict[str, Any]:
+    """Читает параметрическую спецификацию базового риска.
+    Возвращает {"family": "breslow"} для старых моделей → старый путь."""
+    # Приоритет: верхнеуровневое поле, затем training_meta.
+    spec = _get_field(params, "baseline_spec")
+    if isinstance(spec, dict) and spec.get("family"):
+        return spec
+    meta = _get_training_meta(params)
+    spec = _dict_get_normalized(meta, "baseline_spec")
+    if isinstance(spec, dict) and spec.get("family"):
+        return spec
+    return {"family": "breslow"}
+
+
+def _baseline_family(params: Any) -> str:
+    return str(_get_baseline_spec(params).get("family", "breslow")).lower()
+
+
 def name_is_cf(name: Any) -> bool:
     lower = _normalize_name(name)
 
@@ -2388,6 +2467,8 @@ def _get_cf_basis_type(params: Any) -> str:
     if basis_type:
         if basis_type in {"linear", "spline", "powers"}:
             return basis_type
+        if basis_type == "none":
+            return "none"  # Reduced Form: контрольная функция отсутствует
 
         raise ModelValidationError(
             f"Unknown cf_basis_metadata.v_hat_basis: '{_fmt(basis_type_raw)}'"
@@ -2403,6 +2484,10 @@ def _get_cf_basis_type(params: Any) -> str:
 
         if lower.startswith("v_hat_pow") or lower.startswith("eps_d_hat_pow"):
             return "powers"
+
+    # Reduced Form: нет CF-колонок → "none"
+    if not cf_cols:
+        return "none"
 
     return "linear"
 
@@ -3118,28 +3203,33 @@ def _cox_linear_predictor_details(
             cf_basis_values[nm] = np.array([0.0])
 
     else:
-        if _linear_cf_standardized(params):
-            v_hat_value = float(
-                _standardized_residual_array(
+        # Reduced Form: нет контрольной функции → пропускаем вычисление v_hat
+        if basis_type == "none":
+            v_hat_value = 0.0
+            cf_basis_values = {}
+        else:
+            if _linear_cf_standardized(params):
+                v_hat_value = float(
+                    _standardized_residual_array(
+                        params,
+                        np.array([raw_residual], dtype=float),
+                    )[0]
+                )
+            else:
+                mean, _ = _get_cf_residual_mean_std(params)
+                v_hat_value = float(raw_residual - mean)
+
+            if not math.isfinite(v_hat_value):
+                raise PredictionError("v_hat is not finite")
+
+            if basis_type in {"spline", "powers"}:
+                cf_basis_values = _build_cf_basis_at_prediction(
                     params,
                     np.array([raw_residual], dtype=float),
-                )[0]
-            )
-        else:
-            mean, _ = _get_cf_residual_mean_std(params)
-            v_hat_value = float(raw_residual - mean)
-
-        if not math.isfinite(v_hat_value):
-            raise PredictionError("v_hat is not finite")
-
-        if basis_type in {"spline", "powers"}:
-            cf_basis_values = _build_cf_basis_at_prediction(
-                params,
-                np.array([raw_residual], dtype=float),
-            )
-        else:
-            linear_name = cf_cols[0] if cf_cols else "v_hat"
-            cf_basis_values[linear_name] = np.array([v_hat_value], dtype=float)
+                )
+            else:
+                linear_name = cf_cols[0] if cf_cols else "v_hat"
+                cf_basis_values[linear_name] = np.array([v_hat_value], dtype=float)
 
     convention = _get_cox_peakload_convention(params)
 

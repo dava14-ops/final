@@ -193,6 +193,19 @@ from prediction_engine import predict_probability  # type: ignore[attr-defined]
 # noinspection PyUnresolvedReferences
 from prediction_engine import kaplan_meier_check  # type: ignore[attr-defined]
 
+# ─── Параметрический базовый риск (v3.1) ───────────────────────────────────
+try:
+    from parametric_baseline import (
+        fit_parametric_baseline,
+        BaselineSpec,
+        VALID_PARAMETRIC_FAMILIES,
+    )
+    HAS_PARAMETRIC_BASELINE = True
+except ImportError:
+    HAS_PARAMETRIC_BASELINE = False
+    VALID_PARAMETRIC_FAMILIES = frozenset()
+    logger.info("parametric_baseline.py не найден: параметрический базовый риск отключён")
+
 # ★ FIX: локальные helpers для bootstrap SE (не экспортируются из prediction_engine)
 def _dict_get_normalized(d: Any, key: Any, default: Any = None) -> Any:
     """Безопасное получение значения из dict с case-insensitive ключом."""
@@ -398,6 +411,17 @@ class TrainingConfig:
     # Фаза 8: Interaction Age × Hours
     beta_age_hours: float = 0.15  # синергетический эффект
 
+    # ─── Фаза 9: Параметрический базовый риск ────────────────────────────
+    # Семейство для подгонки под кривую Бреслоу.
+    # "weibull" | "gompertz" | "exponential" | "none"
+    # "none" = не подгонять (обратная совместимость).
+    parametric_baseline_fit: str = "weibull"
+
+    # ─── Фаза 9: форма модели ────────────────────────────────────────────
+    # "control_function" — текущий путь с 2SRI / v_hat (казуальная попытка)
+    # "reduced_form"     — упрощённый предиктивный путь: Кокс от [PeakLoad, X, Z]
+    model_form: str = "control_function"
+
     # УДАЛЕНО: allow_auto_instrument_correction больше не используется.
     # Автокоррекция слабого инструмента удалена как методологически некорректная.
     # При F < 10.4 происходит автоматическое переключение в predictive режим.
@@ -551,6 +575,179 @@ class _FirstStageResult:
     @property
     def design(self) -> np.ndarray:
         return self.fs.design
+
+
+class _ReducedFormFirstStageStub:
+    """
+    Фиктивный объект первой стадии для совместимости с
+    build_model_artifact() в режиме reduced_form.
+    .fitted.fittedvalues возвращает массив нулей длиной n.
+    """
+    def __init__(self, n: int):
+        self._n = int(n)
+        self.fittedvalues = np.zeros(self._n, dtype=float)
+        self.resid = np.zeros(self._n, dtype=float)
+        self.params = {}
+        # build_model_artifact обращается к fit["fitted_fs"].fitted.fittedvalues
+        self.fitted = self
+
+    @property
+    def nobs(self) -> int:
+        return self._n
+
+
+def fit_reduced_form_pipeline(
+    cfg: TrainingConfig,
+    dgp: DGPParameters,
+    data: pd.DataFrame,
+    data_mod: pd.DataFrame,
+    baseline_h: float,
+    calibrated_censoring_scale: float,
+    baseline_diag: Dict[str, Any],
+    transform_info: Dict[str, Any],
+    achieved_event_rate: float,
+    peak_stats: Dict[str, float],
+    training_meta_flat: Dict[str, float],
+) -> Dict[str, Any]:
+    """
+    Reduced Form pipeline: без первой стадии, без v_hat, без бутстрапа.
+    Возвращает словарь с теми же ключами, что и fit_first_stage_and_cf().
+    """
+    print()
+    print("=" * 70)
+    print("РЕЖИМ: REDUCED FORM (предиктивная модель)")
+    print("=" * 70)
+    print("Инструмент Z включается в Кокс как обычная ковариата.")
+    print("Первая стадия, контрольная функция и бутстрап не используются.")
+    print("Каузальная интерпрет γ невозможна (нарушение exclusion restriction).")
+    print("=" * 70)
+
+    # Импорт новой функции из Итог.py
+    try:
+        from Итог import fit_reduced_form_cox  # type: ignore[attr-defined]
+    except ImportError as exc:
+        raise RuntimeError(
+            "fit_reduced_form_cox не найдена в Итог.py. "
+            "Примените Патч C.1."
+        ) from exc
+
+    opts = CFFitOptions(
+        cox_se_threshold=10.0,
+        v_hat_basis="none",
+        v_hat_basis_params=None,
+        extra_x_cols=None,
+        center_peakload=None,
+        brand_encoding="dummies",
+        brand_reference_code=0,
+        var_z_threshold=1e-8,
+        min_first_stage_f=10.0,
+        fail_on_weak_instrument=False,
+        min_cox_events=10,
+        min_events_per_covariate=5,
+        save_tracebacks=True,
+        cluster_col="cluster_id",
+        n_bootstrap=0,
+    )
+
+    cf = fit_reduced_form_cox(data=data_mod, opts=opts)
+    for warning in getattr(cf, "warnings", []) or []:
+        logger.warning("[RF Cox WARNING] %s", warning)
+
+    cph_obj = getattr(cf, "cph", None)
+    if cph_obj is None:
+        raise RuntimeError("fit_reduced_form_cox did not return Cox model")
+
+    params_obj = getattr(cph_obj, "params_", None)
+    cox_names = [str(name) for name in _safe_keys(params_obj)]
+    cox_coefs = _safe_params_to_float_dict(params_obj)
+    cox_ses = _safe_params_to_float_dict(getattr(cph_obj, "standard_errors_", None))
+    validate_finite_mapping("cox_coefs", cox_coefs)
+    validate_finite_mapping("cox_standard_errors", cox_ses)
+
+    # PH diagnostics
+    ph_diagnostics = run_ph_diagnostics(cf, data_mod)
+    if ph_diagnostics.get("error"):
+        logger.warning("RF Cox PH diagnostics failed: %s", ph_diagnostics["error"])
+
+    # Baseline serialization + параметрическая подгонка (Задача 1)
+    baseline_hazard_obj = getattr(cph_obj, "baseline_cumulative_hazard_", None)
+    baseline_cumulative_hazard = serialize_baseline(baseline_hazard_obj)
+    validate_cox_baseline(baseline_cumulative_hazard)
+
+    # ─── Параметрическая подгонка базового риска (Задача 1) ────────────
+    baseline_spec_dict: Dict[str, Any] = {"family": "breslow"}
+    parametric_family = str(getattr(cfg, "parametric_baseline_fit", "weibull")).lower()
+    if HAS_PARAMETRIC_BASELINE and parametric_family in VALID_PARAMETRIC_FAMILIES:
+        try:
+            spec_obj = fit_parametric_baseline(
+                breslow_times=np.asarray(baseline_cumulative_hazard["times"], dtype=float),
+                breslow_values=np.asarray(baseline_cumulative_hazard["values"], dtype=float),
+                family=parametric_family,
+            )
+            baseline_spec_dict = spec_obj.to_dict()
+            logger.info(
+                "✅ [RF] Параметрический базовый риск подогнан: family=%s, R²(log)=%.4f",
+                baseline_spec_dict["family"],
+                baseline_spec_dict.get("fit_r2", float("nan")),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[RF] Параметрическая подгонка не удалась (%s).", exc)
+            baseline_spec_dict = {"family": "breslow"}
+
+    # Template covariates
+    template_dict = build_raw_template_covariates(data)
+
+    # CF metadata (пустая для reduced form)
+    cf_basis_metadata = cf.cf_basis_metadata or {}
+
+    # Фиктивная первая стадия для совместимости с build_model_artifact
+    n = len(data_mod)
+    fitted_fs_stub = _ReducedFormFirstStageStub(n)
+
+    return {
+        "fitted_fs": fitted_fs_stub,
+        "resid": np.zeros(n, dtype=float),
+        "fs_names": [],
+        "fs_params": {},
+        "iv_diagnostics": {
+            "f_statistic": None,
+            "f_statistic_weak": None,
+            "cragg_donald_stat": None,
+            "cragg_donald_weak": None,
+            "endogenous": None,
+            "instrument_adequate": False,
+            "model_form": "reduced_form",
+            "note": "No first stage in reduced-form model.",
+        },
+        "iv_mode": IV_MODE_PREDICTIVE,
+        "weak_instrument_fixed": False,
+        "cf": cf,
+        "cox_names": cox_names,
+        "cox_coefs": cox_coefs,
+        "cox_ses": cox_ses,
+        "ph_diagnostics": ph_diagnostics,
+        "baseline_cumulative_hazard": baseline_cumulative_hazard,
+        "baseline_spec": baseline_spec_dict,
+        "template_dict": template_dict,
+        "partial_out_all_betas": {},
+        "training_x_means": {},
+        "training_pl_hat_mean": 0.0,
+        "partial_out_X_beta": 0.0,
+        "training_x_mean": 0.0,
+        "cf_basis_metadata": cf_basis_metadata,
+        "data": data,
+        "data_mod": data_mod,
+        "transform_info": transform_info,
+        "achieved_event_rate": achieved_event_rate,
+        "peak_stats": peak_stats,
+        "training_meta_flat": training_meta_flat,
+        "baseline_h": baseline_h,
+        "calibrated_censoring_scale": calibrated_censoring_scale,
+        "baseline_diag": baseline_diag,
+        "interaction_lr": None,
+        "interaction_lr_test": None,
+        "bootstrap_se": None,
+    }
 
 
 _DEFAULT_CF_OPTIONS = CFFitOptions(
@@ -3126,6 +3323,23 @@ def collect_training_config() -> TrainingConfig:
                 max_value=0.4,
             )
 
+        # ─── Параметрическая подгонка базового риска ──────────────────────────
+        print()
+        print("Параметрическая подгонка базового риска (для экстраполяции):")
+        print("  1) weibull      — H0(t) = λ·t^k (рекомендуется)")
+        print("  2) gompertz     — H0(t) = (λ/b)(e^{bt} - 1)")
+        print("  3) exponential  — H0(t) = λ·t")
+        print("  4) none         — без подгонки (только Breslow)")
+        parametric_choice = ask(
+            "Семейство для подгонки базового риска", "1"
+        ).strip() or "1"
+        cfg.parametric_baseline_fit = {
+            "1": "weibull",
+            "2": "gompertz",
+            "3": "exponential",
+            "4": "none",
+        }.get(parametric_choice, "weibull")
+
         cfg.target_event_rate = ask_open_probability(
             "Целевая доля событий (target event rate)",
             0.02,
@@ -3489,6 +3703,20 @@ def collect_training_config() -> TrainingConfig:
             soil_source = "synthetic"
 
     cfg.soil_source = soil_source
+
+    # ─── Фаза 9: выбор формы модели ─────────────────────────────────────
+    print()
+    print("Форма эконометрической модели:")
+    print("  1) control_function — CF Cox с 2SRI (попытка каузальной коррекции)")
+    print("  2) reduced_form     — предиктивная модель (Z как ковариата, без v_hat)")
+    print("     Рекомендуется при нарушении exclusion restriction.")
+    form_choice = ask(
+        "Форма модели (1 = control_function, 2 = reduced_form)", "1"
+    ).strip() or "1"
+    cfg.model_form = {
+        "1": "control_function",
+        "2": "reduced_form",
+    }.get(form_choice, "control_function")
 
     # Сохраним флаги в конфиг для использования в main()
     cfg._use_claims = use_claims  # type: ignore[attr-defined]
@@ -3954,6 +4182,34 @@ def fit_first_stage_and_cf(
     baseline_cumulative_hazard = serialize_baseline(baseline_hazard_obj)
     validate_cox_baseline(baseline_cumulative_hazard)
 
+    # ─── Параметрическая подгонка базового риска (v3.1) ─────────────────────
+    baseline_spec_dict: Dict[str, Any] = {"family": "breslow"}
+    parametric_family = str(getattr(cfg, "parametric_baseline_fit", "weibull")).lower()
+    if HAS_PARAMETRIC_BASELINE and parametric_family in VALID_PARAMETRIC_FAMILIES:
+        try:
+            spec_obj = fit_parametric_baseline(
+                breslow_times=np.asarray(baseline_cumulative_hazard["times"], dtype=float),
+                breslow_values=np.asarray(baseline_cumulative_hazard["values"], dtype=float),
+                family=parametric_family,
+            )
+            baseline_spec_dict = spec_obj.to_dict()
+            logger.info(
+                "✅ Параметрический базовый риск подогнан: family=%s, R²(log)=%.4f",
+                baseline_spec_dict["family"],
+                baseline_spec_dict.get("fit_r2", float("nan")),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Параметрическая подгонка базового риска не удалась (%s). "
+                "Используется Breslow.", exc,
+            )
+            baseline_spec_dict = {"family": "breslow"}
+    elif parametric_family not in ("none", "breslow", ""):
+        logger.warning(
+            "parametric_baseline_fit='%s' запрошен, но parametric_baseline.py "
+            "недоступен. Используется Breslow.", parametric_family,
+        )
+
     # ─── ДИАГНОСТИКА COX-МОДЕЛИ ─────────────────────────────────────────
     # После обучения Cox — выводим коэффициенты и честную интерпретацию.
     # УБРАНО: расчёт γ + λ как каузального эффекта (лишён смысла в нелинейной Cox).
@@ -4055,6 +4311,7 @@ def fit_first_stage_and_cf(
         "cox_ses": cox_ses,
         "ph_diagnostics": ph_diagnostics,
         "baseline_cumulative_hazard": baseline_cumulative_hazard,
+        "baseline_spec": baseline_spec_dict,  # ← НОВОЕ
         "template_dict": template_dict,
         "partial_out_all_betas": partial_out_all_betas,
         "training_x_means": training_x_means,
@@ -4190,6 +4447,9 @@ def build_model_artifact(
         "mtbf_to_model_time_factor": float(MTBF_TO_MODEL_TIME_FACTOR),
         "default_engine_hours_per_calendar_day": float(DEFAULT_ENGINE_HOURS_PER_CALENDAR_DAY),
 
+        # ─── Форма модели (v3.1: Reduced Form) ────────────────────────
+        "model_form": str(getattr(cfg, "model_form", "control_function")).lower(),
+
         "event_definition": cfg.event_definition,
         "competing_risks": bool(cfg.competing_risks),
         "minor_failure_rate": float(cfg.minor_failure_rate),
@@ -4273,6 +4533,8 @@ def build_model_artifact(
         # Production default: never extrapolate the fitted baseline hazard.
         # Research-only extrapolation must be enabled explicitly by a caller.
         "allow_baseline_extrapolation": False,
+        # ─── Параметрический базовый риск (v3.1) ──────────────────────
+        "baseline_spec": fit.get("baseline_spec", {"family": "breslow"}),
         # Issue #4: Generated regressors — naive SE does not account for
         # first-stage uncertainty. Bootstrap SE is computed if
         # fit.get("bootstrap_se") is not None (set during fit_first_stage_and_cf).
@@ -4360,6 +4622,14 @@ def build_model_artifact(
     )
     residuals_arr = np.asarray(fit["resid"], dtype=float)
 
+    # ─── Reduced Form: обработка training_residuals_std ──────────────────
+    model_form = str(getattr(cfg, "model_form", "control_function")).lower()
+    if model_form == "reduced_form":
+        # В Reduced Form нет остатков первой стадии → std = 1.0 (заглушка)
+        training_residuals_std_val = 1.0
+    else:
+        training_residuals_std_val = max(float(np.std(residuals_arr, ddof=1)), 1e-12)
+
     model_kwargs: Dict[str, Any] = {
         "model_version": model_version_str,
         "model_semantic_version": model_semantic_version,
@@ -4379,6 +4649,7 @@ def build_model_artifact(
             "bootstrap_se": fit.get("bootstrap_se"),
         },
         "baseline_cumulative_hazard": fit["baseline_cumulative_hazard"],
+        "baseline_spec": fit.get("baseline_spec", {"family": "breslow"}),
         "template_covariates": {
             str(name): float(value) for name, value in fit["template_dict"].items()
         },
@@ -4388,7 +4659,7 @@ def build_model_artifact(
         "training_x_means": fit["training_x_means"],
         "partial_out_all_betas": fit["partial_out_all_betas"],
         "training_residuals_mean": float(np.mean(residuals_arr)),
-        "training_residuals_std": float(np.std(residuals_arr, ddof=1)),
+        "training_residuals_std": training_residuals_std_val,
         "training_first_stage_fitted": fitted_values_arr.tolist(),
         "training_residuals_arr": residuals_arr.tolist(),
         "training_meta": training_meta,
@@ -4772,6 +5043,34 @@ def main() -> int:
         baseline_cumulative_hazard = serialize_baseline(baseline_hazard_obj)
         validate_cox_baseline(baseline_cumulative_hazard)
 
+        # ─── Параметрическая подгонка базового риска (v3.1) ─────────────────────
+        baseline_spec_dict: Dict[str, Any] = {"family": "breslow"}
+        parametric_family = str(getattr(cfg, "parametric_baseline_fit", "weibull")).lower()
+        if HAS_PARAMETRIC_BASELINE and parametric_family in VALID_PARAMETRIC_FAMILIES:
+            try:
+                spec_obj = fit_parametric_baseline(
+                    breslow_times=np.asarray(baseline_cumulative_hazard["times"], dtype=float),
+                    breslow_values=np.asarray(baseline_cumulative_hazard["values"], dtype=float),
+                    family=parametric_family,
+                )
+                baseline_spec_dict = spec_obj.to_dict()
+                logger.info(
+                    "✅ Параметрический базовый риск подогнан: family=%s, R²(log)=%.4f",
+                    baseline_spec_dict["family"],
+                    baseline_spec_dict.get("fit_r2", float("nan")),
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Параметрическая подгонка базового риска не удалась (%s). "
+                    "Используется Breslow.", exc,
+                )
+                baseline_spec_dict = {"family": "breslow"}
+        elif parametric_family not in ("none", "breslow", ""):
+            logger.warning(
+                "parametric_baseline_fit='%s' запрошен, но parametric_baseline.py "
+                "недоступен. Используется Breslow.", parametric_family,
+            )
+
         # Template covariates
         template_dict = build_raw_template_covariates(data)
 
@@ -4806,6 +5105,7 @@ def main() -> int:
             "cox_ses": cox_ses,
             "ph_diagnostics": ph_diagnostics,
             "baseline_cumulative_hazard": baseline_cumulative_hazard,
+            "baseline_spec": baseline_spec_dict,  # ← НОВОЕ
             "template_dict": template_dict,
             "partial_out_all_betas": partial_out_all_betas,
             "training_x_means": training_x_means,
@@ -4826,19 +5126,34 @@ def main() -> int:
         }
     else:
         # ─── ВЕТКА: симуляция ──────────────────────────────────────
-        fit = fit_first_stage_and_cf(
-            cfg,
-            dgp,
-            data,
-            data_mod,
-            baseline_h,
-            censoring_scale,
-            baseline_diag,
-            transform_info,
-            achieved_event_rate,
-            peak_stats,
-            training_meta_flat,
-        )
+        if str(getattr(cfg, "model_form", "control_function")).lower() == "reduced_form":
+            fit = fit_reduced_form_pipeline(
+                cfg,
+                dgp,
+                data,
+                data_mod,
+                baseline_h,
+                censoring_scale,
+                baseline_diag,
+                transform_info,
+                achieved_event_rate,
+                peak_stats,
+                training_meta_flat,
+            )
+        else:
+            fit = fit_first_stage_and_cf(
+                cfg,
+                dgp,
+                data,
+                data_mod,
+                baseline_h,
+                censoring_scale,
+                baseline_diag,
+                transform_info,
+                achieved_event_rate,
+                peak_stats,
+                training_meta_flat,
+            )
 
     # Обновить ссылки (могли измениться при автокоррекции)
     data = fit["data"]

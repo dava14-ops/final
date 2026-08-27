@@ -4408,6 +4408,172 @@ def fit_naive_cox(
 
 
 # ---------------------------------------------------------------------------
+# Reduced Form Cox (v3.1)
+# ---------------------------------------------------------------------------
+def fit_reduced_form_cox(
+    data: pd.DataFrame,
+    opts: CFFitOptions,
+) -> CFModelResult:
+    """
+    Reduced Form Cox: h(t|x) = h0(t)·exp(γ·D + π·Z + β·X).
+
+    Инструмент Z входит как обычная предиктивная ковариата.
+    Нет первой стадии, нет контрольной функции, нет бутстрапа
+    для генерируемых регрессоров (проблема #4 исчезает).
+
+    Модель ПРЕДИКТИВНАЯ. Каузальная интерпретация невозможна
+    из-за нарушения exclusion restriction.
+    """
+    if opts.cox_se_threshold <= 0.0:
+        raise ValueError("cox_se_threshold must be positive")
+
+    required_cols = {"time", "event", "PeakLoad", "Z"}
+    missing = required_cols - set(data.columns)
+    if missing:
+        raise KeyError(f"fit_reduced_form_cox missing required columns: {sorted(missing)}")
+
+    model_data = data[["time", "event", "PeakLoad", "Z"]].copy()
+
+    x_cols = _add_design_x_columns(
+        model_data=model_data,
+        source_data=data,
+        extra_x_cols=opts.extra_x_cols,
+        brand_encoding=opts.brand_encoding,
+        brand_reference_code=opts.brand_reference_code,
+    )
+
+    # PeakLoad и Z обязаны быть невырожденными
+    for col in ("PeakLoad", "Z"):
+        std_val = float(np.std(model_data[col].astype(float).to_numpy(), ddof=0))
+        if (not math.isfinite(std_val)) or std_val <= 1e-12:
+            raise ValueError(f"fit_reduced_form_cox: {col} вырождена (std <= 1e-12)")
+
+    # Кластерная структура
+    if opts.cluster_col is not None:
+        if opts.cluster_col in x_cols:
+            raise ValueError(
+                f"cluster_col='{opts.cluster_col}' must NOT be in x_cols"
+            )
+        if opts.cluster_col not in data.columns:
+            raise ValueError(
+                f"cluster_col='{opts.cluster_col}' explicitly requested "
+                f"but not found in data columns"
+            )
+        model_data[opts.cluster_col] = data[opts.cluster_col].to_numpy()
+
+    event_arr = model_data["event"].astype(bool).to_numpy()
+    x_cols = _filter_cox_covariates(
+        df=model_data,
+        cols=x_cols,
+        required=[],
+        event=event_arr,
+        var_floor=1e-12,
+        min_binary_obs=max(10, int(opts.min_events_per_covariate)),
+        min_binary_events=max(1, int(opts.min_events_per_covariate)),
+    )
+
+    covariate_cols = ["PeakLoad", "Z"] + x_cols
+    covariate_cols = list(dict.fromkeys(covariate_cols))
+    _validate_survival_frame(model_data, covariate_cols)
+
+    n_events = int(np.sum(model_data["event"].astype(int).to_numpy()))
+    n = len(model_data)
+    min_events = _min_events_required_from_count(len(covariate_cols), opts)
+    if n_events < min_events:
+        raise RuntimeError(f"Reduced Form Cox: too few events {n_events} < required {min_events}")
+
+    attempted_penalizers: List[float] = []
+    last_exc: Optional[BaseException] = None
+    for pen in _ALL_PENALIZERS:
+        attempted_penalizers.append(float(pen))
+        try:
+            cph = _fit_cox_model(
+                model_data=model_data,
+                covariate_cols=covariate_cols,
+                penalizer=pen,
+                robust=True,
+                check_baseline=True,
+                cluster_col=opts.cluster_col,
+            )
+            params_index = list(cph.params_.index)
+            if "PeakLoad" not in params_index:
+                raise RuntimeError("Reduced Form Cox: no PeakLoad coefficient")
+            if "Z" not in params_index:
+                raise RuntimeError("Reduced Form Cox: no Z coefficient")
+
+            gamma_hat = _safe_series_scalar(cph.params_, "PeakLoad", "RF Cox params")
+            naive_model_se = _safe_series_scalar(
+                cph.standard_errors_, "PeakLoad", "RF Cox standard errors"
+            )
+            ses_all = cph.standard_errors_.to_numpy(dtype=float)
+            max_se = float(np.max(np.abs(ses_all)))
+            if max_se > opts.cox_se_threshold:
+                raise RuntimeError(f"Reduced Form Cox: too-large max_se={max_se}")
+
+            convergence_info = ConvergenceInfo(
+                penalizer=float(pen),
+                warning=None,
+                attempted_penalizers=attempted_penalizers.copy(),
+            )
+            warnings_list: List[str] = []
+            if pen > 0.0:
+                warnings_list.append(
+                    f"Reduced Form Cox estimate is regularized (penalizer={pen})."
+                )
+            warnings_list.append(
+                "Reduced-form model: PREDICTIVE only, no causal correction. "
+                "Z is included directly as a covariate; exclusion restriction "
+                "violation makes causal interpretation invalid."
+            )
+
+            basis_meta: Dict[str, Any] = {
+                "requested_v_hat_basis": "none",
+                "v_hat_basis": "none",
+                "v_hat_cols": [],
+                "residuals_mean": 0.0,
+                "residuals_std": 1.0,
+                "linear_standardized": True,
+                "cf_standardization_convention": "reduced_form",
+                "residual_policy_production": "plug-in",
+                "cox_peakload_convention": "observed_peakload",
+                "model_form": "reduced_form",
+            }
+
+            return CFModelResult(
+                gamma_hat=gamma_hat,
+                naive_model_se=naive_model_se,
+                bootstrap_se=None,
+                se_type="naive",
+                cf_coef=float("nan"),
+                cf_coef_signed=None,
+                cph=cph,
+                max_se=max_se,
+                penalizer=float(pen),
+                is_penalized=bool(pen > 0.0),
+                convergence_info=convergence_info,
+                warnings=warnings_list,
+                n=n,
+                n_events=n_events,
+                v_hat_basis="none",
+                first_stage_report=None,
+                partial_out_all_betas={},
+                training_x_means={},
+                training_pl_hat_mean=0.0,
+                training_residuals_std=1.0,
+                training_residuals_mean=0.0,
+                cf_basis_metadata=basis_meta,
+            )
+        except Exception as exc:
+            last_exc = exc
+            continue
+
+    raise RuntimeError(
+        f"Reduced Form Cox fit failed. Last error: "
+        f"{format_exception(last_exc, opts.save_tracebacks)}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # CF Cox
 # ---------------------------------------------------------------------------
 def fit_cf_cox(
