@@ -40,7 +40,7 @@ def compute_lognormal_variance(mu: float, sigma: float) -> float:
     """
     return (math.exp(sigma ** 2) - 1.0) * math.exp(2.0 * mu + sigma ** 2)
 
-from diagnose_engine import model
+from diagnose_engine import model  # diagnose_engine удалён — диагностика запускается только явно
 
 # Fix for Windows console encoding.
 try:
@@ -2372,7 +2372,7 @@ def compute_full_details(
     if peak_transformed_arr.size == 0:
         raise PredictionError("transform_peak вернул пустой результат.")
     peak_transformed = _as_float(peak_transformed_arr[0], "transform_peak result")
-    pl_hat_raw = predict_first_stage(params_copy)
+    pl_hat_raw = predict_first_stage(params_copy, covariates=covariate_values)
     pl_hat_arr = np.asarray(pl_hat_raw).ravel()
     if pl_hat_arr.size == 0:
         raise PredictionError("predict_first_stage вернул пустой результат.")
@@ -2929,11 +2929,13 @@ def collect_user_inputs(
     severity_model = _load_severity_model_safe()
     if severity_model is not None:
         cfg.expected_loss_per_failure = severity_model.expected_loss_per_failure()
+        cfg.expected_repair = severity_model.expected_repair_cost()
+        cfg.downtime_cost_per_failure = severity_model.expected_downtime_cost()
         logger.info(
             "Severity из реальных данных: E[loss] = %s руб. (E[repair] = %s, E[downtime_cost] = %s)",
             fmt_money(cfg.expected_loss_per_failure),
-            fmt_money(severity_model.expected_repair_cost()),
-            fmt_money(severity_model.expected_downtime_cost()),
+            fmt_money(cfg.expected_repair),
+            fmt_money(cfg.downtime_cost_per_failure),
         )
         cfg.severity_model = severity_model
 
@@ -2984,9 +2986,16 @@ def collect_user_inputs(
     print(
         f"Ожидаемый убыток на один отказ: {fmt_money(cfg.expected_loss_per_failure)} руб."
     )
-    print(
-        f"Сумма выплаты для премии (режим '{cfg.coverage_mode}'): {fmt_money(cfg.claim_amount)} руб."
-    )
+    if cfg.use_severity_pricing:
+        print(
+            f"Сумма выплаты для премии (режим '{cfg.coverage_mode}'): "
+            f"{fmt_money(cfg.severity_expected_severity)} руб. "
+            f"(лимит: {fmt_money(cfg.claim_amount)} руб.)"
+        )
+    else:
+        print(
+            f"Сумма выплаты для премии (режим '{cfg.coverage_mode}'): {fmt_money(cfg.claim_amount)} руб."
+        )
 
     return cfg
 
