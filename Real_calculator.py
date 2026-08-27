@@ -314,7 +314,7 @@ def placebo_test_exclusion_restriction(
     # у пользователя и аудиторов. Exclusion Restriction НЕ может быть проверен
     # без реального датасета с категоризацией отказов.
     result["test_performed"] = False
-    result["warning"] = (
+    warning_msg = (
         "⚠️ PLACEBO TEST NOT IMPLEMENTED. "
         "Exclusion restriction не может быть проверена без реального датасета "
         "с гранулярной категоризацией отказов (например, 'cabin_electrics'). "
@@ -326,6 +326,14 @@ def placebo_test_exclusion_restriction(
         "  3. Столбцом weather_instrument (Z)\n"
         "  4. Минимум 100 наблюдениями placebo-категории (электроника кабины)\n"
         "  5. Регрессия: failure_count ~ Z + covariates (Poisson/NB)"
+    )
+    result["warning"] = warning_msg
+    
+    # PATCH 4: Усиленное предупреждение через logger.warning
+    logger.warning(
+        "⚠️ CRITICAL: Exclusion restriction NOT validated. "
+        "Instrument Z may directly affect outcome Y, making IV estimates inconsistent. "
+        "Results should be interpreted as PREDICTIVE, not causal."
     )
 
     return result
@@ -3204,7 +3212,9 @@ def compute_all_peaks(
 
             # Берём RAW значения из cfg.extended
             age_raw = cfg.extended.get("age_years", age_shift)  # по умолчанию = mean
-            peak_raw = cfg.extended.get("peak_load_mean", peak_shift)  # по умолчанию = mean
+            # PATCH 2 (CRITICAL): Используем ТЕКУЩИЙ peak из цикла, а не фиксированный peak_load_mean
+            # Это критично для competing risks, т.к. effective_share должен зависеть от текущего PeakLoad
+            peak_raw = peak  # ← используем текущий peak из цикла for peak in peaks_to_compute
 
             # Стандартизируем
             age_std = (float(age_raw) - age_shift) / age_scale
@@ -3343,10 +3353,18 @@ def compute_all_peaks(
             severity_var = getattr(sm, "expected_variance", None)
             if severity_var is not None and severity_var > 0:
                 severity_sd = math.sqrt(severity_var)
-                severity_risk_margin = 1.645 * severity_sd * event_probability
+                # PATCH 1 (CRITICAL): Правильная формула Risk Margin с учетом биномиальной дисперсии
+                # L = I * S, где I ~ Bernoulli(p), S — severity
+                # Var(L) = p * Var(S) + p*(1-p) * E[S]^2
+                expected_severity = cfg.expected_loss_per_failure
+                total_variance = (
+                    event_probability * severity_var + 
+                    event_probability * (1.0 - event_probability) * expected_severity ** 2
+                )
+                severity_risk_margin = 1.645 * math.sqrt(total_variance)
                 severity_dispersion_warning = (
                     f"Risk margin (95% VaR): {fmt_money(severity_risk_margin)} руб. "
-                    f"(SD={fmt_money(severity_sd)})"
+                    f"(SD={fmt_money(severity_sd)}, E[severity]={fmt_money(expected_severity)})"
                 )
             else:
                 severity_dispersion_warning = (
@@ -3372,11 +3390,20 @@ def compute_all_peaks(
 
             # Объединённая SD (repair + downtime независимы)
             total_sd = math.sqrt(severity_sd ** 2 + downtime_sd ** 2)
-            severity_risk_margin = 1.645 * total_sd * event_probability
+            
+            # PATCH 1 (CRITICAL): Правильная формула Risk Margin с учетом биномиальной дисперсии
+            # L = I * S, где I ~ Bernoulli(p), S — severity
+            # Var(L) = p * Var(S) + p*(1-p) * E[S]^2
+            expected_severity = cfg.expected_loss_per_failure
+            total_variance = (
+                event_probability * total_sd ** 2 + 
+                event_probability * (1.0 - event_probability) * expected_severity ** 2
+            )
+            severity_risk_margin = 1.645 * math.sqrt(total_variance)
             severity_dispersion_warning = (
                 f"Risk margin (95% VaR, Lognormal μ={SEVERITY_LOGNORMAL_MU:.1f}, "
                 f"σ={SEVERITY_LOGNORMAL_SIGMA:.2f}): {fmt_money(severity_risk_margin)} руб. "
-                f"(SD={fmt_money(total_sd)})"
+                f"(SD={fmt_money(total_sd)}, E[severity]={fmt_money(expected_severity)})"
             )
 
         if severity_risk_margin > 0:
