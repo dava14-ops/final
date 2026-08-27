@@ -2214,10 +2214,13 @@ def serialize_baseline(h_df: Any) -> Dict[str, List[float]]:
     times = times[order]
     values = values[order]
 
-    # Aggregate duplicates: для одинаковых times берём max cumulative hazard.
-    unique_times, idx_start = np.unique(times, return_index=True)
-    values = np.maximum.reduceat(values, idx_start)
-    times = unique_times
+    # PATCH 3: Более надежный способ агрегации дубликатов через pandas groupby
+    # np.maximum.reduceat может работать некорректно, если дубликаты не идут подряд
+    # (хотя после argsort это маловероятно). pandas groupby более явный и надежный.
+    df = pd.DataFrame({'times': times, 'values': values})
+    df = df.groupby('times', sort=True)['values'].max().reset_index()
+    times = df['times'].values
+    values = df['values'].values
 
     if len(times) == 0:
         raise RuntimeError("baseline became empty after aggregation")
