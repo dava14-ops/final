@@ -636,7 +636,10 @@ class CFFitOptions:
     # Bootstrap включён по умолчанию для корректного учёта
     # неопределённости первой стадии (generated regressor problem).
     # Наивные SE из lifelines занижают дисперсию.
-    n_bootstrap: int = 50  # 200 итераций — баланс точность/скорость
+    # PATCH-11: 200 итераций — минимально допустимое для
+    # относительной ошибки SE ≈ 1/√(2·200) ≈ 5%.
+    # Для публикации: 1000+.
+    n_bootstrap: int = 200  # БЫЛО: 50
 
 
 def fit_options_from_config(config: SimulationConfig) -> CFFitOptions:
@@ -1202,6 +1205,14 @@ def _add_design_x_columns(
         model_data["x_age_hours"] = (raw_interaction - m) / s
         if "x_age_hours" not in x_cols:
             x_cols.append("x_age_hours")
+
+    # ─── PATCH-10: Enterprise Quality Index ────────────────────────
+    if "x_enterprise_quality" in source_data.columns:
+        vals = source_data["x_enterprise_quality"].astype(float).to_numpy()
+        if np.all(np.isfinite(vals)) and np.std(vals) > 1e-12:
+            model_data["x_enterprise_quality"] = vals
+            if "x_enterprise_quality" not in x_cols:
+                x_cols.append("x_enterprise_quality")
 
     return x_cols
 
@@ -2367,20 +2378,30 @@ def generate_data(
     time_minor = np.where(event_minor, true_minor_time, observed_time)
     downtime_hours = downtime_hours_from_failure_type(failure_type)
 
-    # ─── Cluster IDs: Region × Year × Campaign ───────────────────────
-    # Разбиваем выборку на кластеры для cluster-robust оценки.
-    # Если используется гибридный режим с реальными данными,
-    # то cluster_id должен соответствовать индексам повторной выборки (0..31),
-    # а не production_year × campaign_group
+    # ─── Cluster IDs: корректная кластерная структура ──────────────
+    # Приоритет:
+    #   1. Гибридный режим → cluster_indices из реальных данных
+    #   2. EQI режим → enterprise_id (внутрипредприятиенная корреляция)
+    #   3. Стандартный → production_year × campaign_group
     if cluster_id_from_real is not None:
-        # Гибридный режим: используем cluster_indices из реальных данных
         cluster_id = cluster_id_from_real
         logger.info(
-            "Cluster ID: используем cluster_indices из реальных данных (%d уникальных)",
+            "Cluster ID: cluster_indices из реальных данных (%d уникальных)",
             len(np.unique(cluster_id)),
         )
+    elif getattr(dgp, "use_enterprise_quality", False):
+        # PATCH-10: предприятие как кластер.
+        # Все тракторы одного предприятия имеют одинаковый EQI,
+        # что создаёт внутрипредприятиенную корреляцию ошибок.
+        # Стандартная кластеризация (год × кампания) эту корреляцию
+        # НЕ учитывает, что приводит к заниженным кластерным SE.
+        cluster_id = enterprise_ids.astype(str)
+        n_ent = len(np.unique(enterprise_ids))
+        logger.info(
+            "Cluster ID: enterprise_id (%d предприятий, EQI режим)",
+            n_ent,
+        )
     else:
-        # Стандартный режим: production_year × campaign_group
         n_years = int(np.unique(production_year).size)
         n_campaign_groups = 4
         campaign_group = rng.integers(1, n_campaign_groups + 1, size=n)

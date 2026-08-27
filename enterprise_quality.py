@@ -71,6 +71,16 @@ def generate_enterprise_quality(
     if n_enterprises > n_tractors:
         raise ValueError("n_enterprises cannot exceed n_tractors")
 
+    # PATCH-10: минимальное число предприятий для кластерных SE
+    if n_enterprises < 30:
+        import logging
+        logging.getLogger(__name__).warning(
+            "EQI: только %d предприятий (< 30). "
+            "Кластерные SE могут быть смещены. "
+            "Рекомендуется ≥ 50 предприятий.",
+            n_enterprises,
+        )
+
     # Balanced enterprise assignment
     # Each enterprise gets exactly n_tractors // n_enterprises tractors
     enterprise_ids = np.arange(n_tractors) % n_enterprises

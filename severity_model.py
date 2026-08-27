@@ -184,9 +184,31 @@ class SeverityModel:
             result = float(np.mean(covered))
             return max(0.0, result)
 
-        # Аппроксимация: E[max(0, E[loss] - deductible)]
-        # Это точная формула только для вырожденного распределения.
-        # Для скошенных распределений даёт систематическую ошибку.
+        # PATCH-02: Попытка точного расчёта через логнормальную формулу
+        # (если известны параметры распределения)
+        if hasattr(self, '_severity_mu') and hasattr(self, '_severity_sigma'):
+            try:
+                from premium_engine import _covered_loss_lognormal
+                return _covered_loss_lognormal(
+                    mu=self._severity_mu,
+                    sigma=self._severity_sigma,
+                    deductible=deductible,
+                    limit=coverage_limit,
+                )
+            except ImportError:
+                pass
+
+        # Аппроксимация: E[max(0, E[loss] − deductible)]
+        # ВНИМАНИЕ: систематическое занижение при наличии дисперсии
+        import warnings
+        warnings.warn(
+            "expected_covered_loss: микро-данные недоступны. "
+            "Используется аппроксимация max(0, E[X]−d). "
+            "Для точного расчёта сохраните микро-данные "
+            "через save_severity_model().",
+            UserWarning,
+            stacklevel=2,
+        )
         expected = self.expected_loss_per_failure()
         covered = max(0.0, expected - deductible)
         if coverage_limit is not None and coverage_limit > 0:

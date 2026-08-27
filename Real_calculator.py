@@ -151,13 +151,33 @@ class HeavyTailedSeverityFallback:
         self, deductible: float = 0.0, coverage_limit: Optional[float] = None
     ) -> float:
         """
-        E[max(0, X - deductible)] capped by coverage_limit.
+        PATCH-02: Точный расчёт E[max(0, X − d)] для Lognormal.
+        Вместо аппроксимации max(0, E[X]−d) используется
+        аналитическая формула через нормальную CDF.
         """
-        expected = self.expected_loss_per_failure()
-        covered = max(0.0, expected - deductible)
-        if coverage_limit is not None:
-            covered = min(covered, coverage_limit)
-        return covered
+        try:
+            from premium_engine import _covered_loss_lognormal
+            return _covered_loss_lognormal(
+                mu=self.mu,
+                sigma=self.sigma,
+                deductible=deductible,
+                limit=coverage_limit,
+            )
+        except ImportError:
+            # Fallback: аппроксимация с предупреждением
+            import warnings
+            warnings.warn(
+                "HeavyTailedSeverityFallback: точный расчёт недоступен. "
+                "Используется аппроксимация max(0, E[X]−d), "
+                "которая занижает результат при наличии дисперсии.",
+                UserWarning,
+                stacklevel=2,
+            )
+            expected = self.expected_loss_per_failure()
+            covered = max(0.0, expected - deductible)
+            if coverage_limit is not None:
+                covered = min(covered, coverage_limit)
+            return covered
 
 
 # ============================================================================
@@ -3215,9 +3235,14 @@ def compute_all_peaks(
                 beta_peak = 0.30
                 beta_age = 0.20
                 beta_hours = 0.10
-                logger.info(
-                    "Cause-specific share: использованы priors (alpha=%.3f, beta_peak=%.3f, beta_age=%.3f)",
-                    alpha_logit, beta_peak, beta_age,
+                # PATCH-15: явное логирование использования priors
+                logger.warning(
+                    "Cause-specific share: использованы ЭКСПЕРТНЫЕ priors "
+                    "(beta_peak=%.2f, beta_age=%.2f, beta_hours=%.2f). "
+                    "Неопределённость НЕ пропагирована в доверительные интервалы. "
+                    "Для точного расчёта обучите модель через "
+                    "fit_cause_specific_logistic().",
+                    beta_peak, beta_age, beta_hours,
                 )
 
             logit_share = (
