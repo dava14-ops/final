@@ -567,7 +567,9 @@ _DEFAULT_CF_OPTIONS = CFFitOptions(
     save_tracebacks=True,
     cluster_col="cluster_id",
     # ★ FIX 2.3: Bootstrap SE включён по умолчанию
-    n_bootstrap=0,
+    # PATCH-11: 200 итераций — минимально допустимое для
+    # относительной ошибки SE ≈ 1/√(2·200) ≈ 5%.
+    n_bootstrap=200,  # БЫЛО: 0
 )
 
 

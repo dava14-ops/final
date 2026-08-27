@@ -193,78 +193,15 @@ def _scale_probability_to_horizon(
     target_horizon_days: float,
 ) -> float:
     """
-    DEPRECATED: Scale event probability from calibration horizon to policy horizon.
-
-    WARNING: Do NOT use with Cox model. Cox model already computes
-        P(T <= t | x) = 1 - exp(-H0(t) * exp(lp))
-    for any t via the baseline cumulative hazard H0(t).
-
-    Exponential scaling assumes constant hazard rate, which contradicts
-    the time-varying baseline in Cox models.
-
-    This function is retained only for backward compatibility and for use
-    with external probabilities that are NOT from a Cox model.
-
-    Assumes constant hazard rate:
-        P(T <= t) = 1 - exp(-lambda * t)
-        => P(T <= t2) = 1 - (1 - P(T <= t1))^(t2 / t1)
-
-    Numerically stable form:
-        1 - (1 - p)^r = -expm1(r * log1p(-p))
+    REMOVED: Эта функция предполагала постоянный hazard (экспоненциальное),
+    что противоречит Cox-модели с переменной базовой опасностью.
     """
-    warnings.warn(
-        "_scale_probability_to_horizon is deprecated and assumes constant hazard. "
-        "Do not use with Cox model probabilities.",
-        DeprecationWarning,
-        stacklevel=2,
+    raise NotImplementedError(
+        "_scale_probability_to_horizon удалена. "
+        "Для Cox-модели вероятность на произвольном горизонте "
+        "вычисляется через predict_probability(time_horizon=t). "
+        "Не используйте экспоненциальное масштабирование."
     )
-
-    probability = _validate_probability(probability)
-
-    calib_horizon_days = _validate_positive_finite(
-        calib_horizon_days,
-        "calib_horizon_days",
-    )
-    target_horizon_days = _validate_positive_finite(
-        target_horizon_days,
-        "target_horizon_days",
-    )
-
-    # If horizons match, no scaling needed.
-    if math.isclose(
-        target_horizon_days,
-        calib_horizon_days,
-        rel_tol=1e-12,
-        abs_tol=1e-9,
-    ):
-        return probability
-
-    if probability == 0.0:
-        return 0.0
-
-    if probability == 1.0:
-        return 1.0
-
-    ratio = target_horizon_days / calib_horizon_days
-
-    if not math.isfinite(ratio):
-        raise PremiumCalculationError(
-            "Probability scaling ratio is not finite"
-        )
-
-    # Extremely small positive ratio can underflow to zero.
-    if ratio == 0.0:
-        return 0.0
-
-    scaled_probability = -math.expm1(ratio * math.log1p(-probability))
-
-    if not math.isfinite(scaled_probability):
-        raise PremiumCalculationError(
-            "Probability scaling produced a non-finite value"
-        )
-
-    # Clamp possible floating point drift.
-    return float(min(1.0, max(0.0, scaled_probability)))
 
 
 def _covered_loss_lognormal(
@@ -503,6 +440,7 @@ def _calculate_single_premium_validated(
     expected_severity: Optional[float] = None,
     deductible: float = 0.0,
     coverage_limit: Optional[float] = None,
+    severity_already_covered: bool = False,
     severity_lognormal_mu: float = 11.5,
     severity_lognormal_sigma: float = 0.6,
 ) -> Dict[str, float]:
@@ -514,6 +452,10 @@ def _calculate_single_premium_validated(
     Parameters for Jensen's inequality correction (PATCH-02):
         severity_lognormal_mu: μ parameter of LogNormal severity distribution
         severity_lognormal_sigma: σ parameter of LogNormal severity distribution
+        severity_already_covered: если True, expected_severity уже содержит
+            E[covered loss] (франшиза и лимит учтены). Повторное применение
+            НЕ выполняется. Если False, применяется формула через
+            _covered_loss_lognormal.
     """
     # ================================================================
     # Step 1: expected covered loss.
@@ -522,15 +464,18 @@ def _calculate_single_premium_validated(
     # иначе legacy: P * sum_insured.
     # ================================================================
     if expected_severity is not None:
-        # PATCH-02: Jensen's inequality fix for LogNormal severity
-        # Use E[max(0, X - d)] instead of max(0, E[X] - d)
-        # For LogNormal(mu, sigma), we use the analytical formula
-        covered = _covered_loss_lognormal(
-            mu=severity_lognormal_mu,
-            sigma=severity_lognormal_sigma,
-            deductible=deductible,
-            limit=coverage_limit,
-        )
+        if severity_already_covered:
+            # PATCH-02: франшиза и лимит уже учтены в expected_severity.
+            # НЕ применяем повторно.
+            covered = max(0.0, expected_severity)
+        else:
+            # Legacy: используем точный расчёт через логнормальную формулу
+            covered = _covered_loss_lognormal(
+                mu=severity_lognormal_mu,
+                sigma=severity_lognormal_sigma,
+                deductible=deductible,
+                limit=coverage_limit,
+            )
         net_undiscounted = probability * covered
     else:
         net_undiscounted = probability * sum_insured
@@ -647,6 +592,7 @@ def calculate_single_premium(
     expected_severity: Optional[float] = None,
     deductible: float = 0.0,
     coverage_limit: Optional[float] = None,
+    severity_already_covered: bool = False,
 ) -> Dict[str, float]:
     """
     Calculate premium for one probability.
@@ -672,6 +618,12 @@ def calculate_single_premium(
         gross_undiscounted = net_undiscounted * (1 + theta)
         gross_discounted   = net_discounted * (1 + theta)
         tariff             = gross_discounted / sum_insured * 100
+    
+    Parameters
+    ----------
+    severity_already_covered : bool
+        Если True, expected_severity уже содержит E[covered loss]
+        (франшиза и лимит учтены). Повторное применение НЕ выполняется.
     """
     try:
         (
@@ -714,6 +666,7 @@ def calculate_single_premium(
             expected_severity=expected_severity,
             deductible=deductible,
             coverage_limit=coverage_limit,
+            severity_already_covered=severity_already_covered,
             severity_lognormal_mu=11.5,
             severity_lognormal_sigma=0.6,
         )
@@ -905,15 +858,19 @@ def calculate_premium_with_severity(
             f"expected_covered_loss is not finite: {expected_severity}"
         )
 
+    # PATCH-02: expected_severity уже содержит E[covered loss] из severity_model.
+    # Передаём severity_already_covered=True, чтобы избежать двойного
+    # применения франшизы в calculate_single_premium.
     return calculate_single_premium(
         probability=probability,
         sum_insured=sum_insured,
         theta=theta,
         expected_severity=float(expected_severity),
-        deductible=deductible,
-        coverage_limit=coverage_limit,
+        deductible=0.0,                      # ← НЕ применяем повторно
+        coverage_limit=None,                 # ← НЕ применяем повторно
         discount_rate=discount_rate,
         policy_horizon_days=policy_horizon_days,
+        severity_already_covered=True,       # ← НОВЫЙ ФЛАГ
     )
 
 

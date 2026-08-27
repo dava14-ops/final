@@ -780,6 +780,13 @@ def _get_x_std_info(params: Any, name: str) -> Dict[str, Any]:
     fallback = _dict_get_normalized(X_STANDARDIZATION_FALLBACK, name)
 
     if isinstance(fallback, dict):
+        # PATCH-14: предупреждение при использовании fallback
+        logger.warning(
+            "Используется FALLBACK стандартизация для '%s'. "
+            "training_meta.x_standardization отсутствует. "
+            "Возможен train-serve skew.",
+            name,
+        )
         return fallback
 
     return {}
@@ -2932,6 +2939,13 @@ def _validate_residual_policy(params: Any, policy: Any) -> str:
                 "Set training_meta['allow_diagnostic_residual_policies']=True to enable."
             )
 
+        # PATCH-17: явное предупреждение
+        logger.warning(
+            "⚠️ Диагностика политика '%s' активна. "
+            "Коррекция эндогенности отключена. "
+            "Результаты НЕ пригодны для ценообразования.",
+            policy,
+        )
         return policy
 
     raise InvalidInputError(
