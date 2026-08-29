@@ -1808,9 +1808,9 @@ def estimate_season_engine_hours(
 def format_crop_summary(
     crop_key: str,
     area_ha: float,
-    peaks: list[float],
-    operation_names_ru: Optional[Dict[str, str]] = None,
+    tractor: str = "МТЗ-82",
     k_ob: float = 1.0,
+    operation_names_ru: Optional[Dict[str, str]] = None,
 ) -> str:
     """
     Сформировать текстовую сводку технологической карты.
@@ -1821,9 +1821,6 @@ def format_crop_summary(
 
     if operation_names_ru is None:
         operation_names_ru = {}
-
-    # Определить трактор из peaks (по умолчанию МТЗ-82)
-    tractor = "МТЗ-82"
 
     lines = []
     lines.append("=" * 70)

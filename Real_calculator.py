@@ -3135,10 +3135,20 @@ def collect_user_inputs(
         "Страховая сумма / лимит выплаты (руб.)", DEFAULT_SUM_INSURED
     )
 
-    horizon_default = DEFAULT_HORIZON_ENGINE_HOURS
-    if cfg.calib_horizon_value is not None:
-        horizon_default = float(cfg.calib_horizon_value)
-    cfg.horizon = _ask_positive_horizon("Горизонт прогнозирования (мото-часы)", horizon_default)
+    # ─── Запрос горизонта: только если НЕ в режиме культуры ─────────
+    if not cfg.crop_key:
+        horizon_default = DEFAULT_HORIZON_ENGINE_HOURS
+        if cfg.calib_horizon_value is not None:
+            horizon_default = float(cfg.calib_horizon_value)
+        cfg.horizon = _ask_positive_horizon(
+            "Горизонт прогнозирования (мото-часы)", horizon_default
+        )
+    else:
+        # В режиме культуры горизонт уже вычислен из агрокалендаря
+        logger.info(
+            "Режим культуры: горизонт = %.0f моточасов (из агрокалендаря)",
+            cfg.horizon,
+        )
 
     cfg.theta = _ask_theta("Страховая нагрузка (доля, например 0.15 = 15%)", DEFAULT_THETA)
     cfg.discount_rate = _ask_discount_rate(
@@ -3326,17 +3336,17 @@ def compute_all_peaks(params: ModelParameters, cfg: CalculatorConfig) -> list[di
         crop_name = crop.crop_name_ru if crop else cfg.crop_key
         labels = [f"{crop_name} ({cfg.crop_area_ha:.0f} га)"]
 
-    selected_operation = cfg.extended.get("season")
-    if selected_operation and selected_operation in TUM_OPERATIONS:
-        op_info = TUM_OPERATIONS[selected_operation]
-        op_peak_raw = op_info.get("peak_load_mean", op_info.get("mean"))
-        if op_peak_raw is not None and op_peak_raw > 0:
-            # PATCH 1.1: Масштабирование удалено — шкалы TUM и DGP совпадают [0, 1]
-            op_peak = op_peak_raw
-            peaks_to_compute.append(op_peak)
-            # Показываем русское название операции
-            name_ru = op_info.get("name_ru", selected_operation)
-            labels.append(f"{name_ru} ({selected_operation})")
+    # ─── В режиме культуры НЕ добавляем отдельную операцию ─────────
+    if not (cfg.crop_key and HAS_AGRO_CALENDAR):
+        selected_operation = cfg.extended.get("season")
+        if selected_operation and selected_operation in TUM_OPERATIONS:
+            op_info = TUM_OPERATIONS[selected_operation]
+            op_peak_raw = op_info.get("peak_load_mean", op_info.get("mean"))
+            if op_peak_raw is not None and op_peak_raw > 0:
+                op_peak = op_peak_raw
+                peaks_to_compute.append(op_peak)
+                name_ru = op_info.get("name_ru", selected_operation)
+                labels.append(f"{name_ru} ({selected_operation})")
 
     print("\n" + "-" * 60 + "\nРЕЗУЛЬТАТЫ РАСЧЁТА (пошагово)\n" + "-" * 60)
 
