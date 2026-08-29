@@ -101,17 +101,30 @@ class TestEngineHoursComputation:
                     f"вне [{exp_min}, {exp_max}]"
                 )
 
-    def test_sugar_beet_heavier_than_wheat(self, results):
-        """Свёкла должна требовать больше моточасов, чем пшеница."""
+    def test_potato_heavier_than_wheat(self, results):
+        """Картофель должен требовать больше моточасов, чем пшеница."""
         for area in TEST_AREAS:
             for tractor in TEST_TRACTORS:
                 label = f"{area}га_{tractor}"
                 wheat = results.get("wheat_spring", {}).get(label)
+                potato = results.get("potato", {}).get(label)
+                if wheat and potato:
+                    assert potato[0] > wheat[0], (
+                        f"{label}: картофель ({potato[0]:.0f} мч) "
+                        f"должен быть тяжелее пшеницы ({wheat[0]:.0f} мч)"
+                    )
+
+    def test_potato_heavier_than_beet(self, results):
+        """Картофель должен требовать больше моточасов, чем кормовая свёкла."""
+        for area in TEST_AREAS:
+            for tractor in TEST_TRACTORS:
+                label = f"{area}га_{tractor}"
                 beet = results.get("forage_beet", {}).get(label)
-                if wheat and beet:
-                    assert beet[0] > wheat[0], (
-                        f"{label}: свёкла ({beet[0]:.0f} мч) "
-                        f"должна быть тяжелее пшеницы ({wheat[0]:.0f} мч)"
+                potato = results.get("potato", {}).get(label)
+                if beet and potato:
+                    assert potato[0] > beet[0], (
+                        f"{label}: картофель ({potato[0]:.0f} мч) "
+                        f"должен быть тяжелее кормовой свёклы ({beet[0]:.0f} мч)"
                     )
 
 
@@ -230,6 +243,23 @@ class TestCropComparison:
         if wheat_prob is not None and beet_prob is not None:
             assert beet_prob >= wheat_prob, (
                 f"P(свёкла)={beet_prob:.6f} < P(пшеница)={wheat_prob:.6f}"
+            )
+
+    def test_potato_probability_geq_wheat(self, probabilities):
+        """P(картофель) >= P(пшеница) на одинаковых условиях."""
+        area = 200.0
+        tractor = "МТЗ-82"
+        label = f"{area}га_{tractor}"
+
+        wheat_key = f"wheat_spring_{label}"
+        potato_key = f"potato_{label}"
+
+        wheat_prob = probabilities.get(wheat_key)
+        potato_prob = probabilities.get(potato_key)
+
+        if wheat_prob is not None and potato_prob is not None:
+            assert potato_prob >= wheat_prob, (
+                f"P(картофель)={potato_prob:.6f} < P(пшеница)={wheat_prob:.6f}"
             )
 
 

@@ -214,8 +214,8 @@ def test_config() -> Dict[str, Any]:
         "tractors": TEST_TRACTORS,
         "calibration_horizon": 214.0,
         "expected_hours_per_ha": {
-            "wheat_winter": (1.0, 6.0),
-            "sugar_beet": (3.0, 7.0),
-            "potato": (3.0, 10.0),
+            "wheat_spring": (1.0, 6.0),
+            "forage_beet":  (3.0, 7.0),
+            "potato":       (3.0, 10.0),
         },
     }
