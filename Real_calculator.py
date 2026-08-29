@@ -15,7 +15,7 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Tuple
+from typing import Any, Dict, Tuple
 
 import numpy as np
 import pandas as pd
@@ -50,16 +50,18 @@ def compute_lognormal_variance(mu: float, sigma: float) -> float:
 # Fix for Windows console encoding.
 # FIX: Отключаем обёртывание, если запущен pytest.
 # Иначе ломается capture-механизм PyCharm/pytest (ValueError: I/O operation on closed file).
+# Fix for Windows console encoding.
+# FIX: Отключаем обёртывание, если запущен pytest.
+# Иначе ломается capture-механизм PyCharm/pytest (ValueError: I/O operation on closed file).
+# FIX 2: Используем reconfigure() вместо TextIOWrapper.
+# TextIOWrapper(sys.stdout.buffer) создаёт новый объект, который "забирает"
+# общий буфер у оригинального sys.stdout. При сборке мусора буфер закрывается,
+# что вызывает ValueError: I/O operation on closed file.
+# reconfigure() изменяет кодировку существующего объекта без создания нового.
 if "pytest" not in sys.modules:
     try:
-        import io
-
-        if hasattr(sys.stdout, "buffer"):
-            sys.stdout = io.TextIOWrapper(
-                sys.stdout.buffer,
-                encoding="utf-8",
-                errors="backslashreplace",
-            )
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
     except (AttributeError, ValueError, OSError):
         pass
 
@@ -1364,7 +1366,7 @@ def ask_crop_selection(extended: dict[str, Any]) -> Tuple[str, float]:
 def ask_k_ob_parameters() -> Tuple[float, Dict[str, str]]:
     """
     Запрос параметров K_об у пользователя.
-    
+
     Returns
     -------
     Tuple[float, Dict[str, str]]
@@ -1372,9 +1374,9 @@ def ask_k_ob_parameters() -> Tuple[float, Dict[str, str]]:
     """
     if not HAS_AGRO_NORMS:
         return 1.0, {}
-    
+
     from agro_norms import calculate_k_ob
-    
+
     print("\n" + "=" * 60)
     print("ПОПРАВОЧНЫЙ КОЭФФИЦИЕНТ ПОЛЕВЫХ УСЛОВИЙ (K_об)")
     print("Источник: Сроки.ПДФ, Таблица 1.1, формула 1.2")
@@ -1382,34 +1384,32 @@ def ask_k_ob_parameters() -> Tuple[float, Dict[str, str]]:
     print("K_об = K_K × K_h × K_C × K_П × K_R")
     print("Чем хуже условия → тем меньше K_об → тем больше моточасов")
     print()
-    
+
     # 1. Тип работ
     op_type_options = ["пахотные", "непахотные", "кошение трав"]
     op_type = ask_choice("Тип работ:", op_type_options, "пахотные")
-    
+
     # 2. Каменистость
     stoniness_options = ["отсутствует", "слабая", "средняя", "сильная"]
     stoniness = ask_choice("Степень каменистости почвы:", stoniness_options, "отсутствует")
-    
+
     # 3. Высота над уровнем моря
     altitude_options = ["до 500", "500-1000", "1000-1500", "1500-2000"]
     altitude = ask_choice("Высота над уровнем моря (м):", altitude_options, "до 500")
-    
+
     # 4. Сложность конфигурации полей
     config_options = ["I", "II", "III", "IV", "V"]
     print("Группы сложности: I = простые поля, V = очень сложные")
     field_config = ask_choice("Группа сложности конфигурации полей:", config_options, "I")
-    
+
     # 5. Изрезанность препятствиями
     obstacles_options = ["0", "до 5", "5-10", "10-15", "15-20", "20-25", "25-30", "30-35"]
-    obstacles_pct = ask_choice(
-        "Площадь, занимаемая препятствиями (%):", obstacles_options, "0"
-    )
-    
+    obstacles_pct = ask_choice("Площадь, занимаемая препятствиями (%):", obstacles_options, "0")
+
     # 6. Рельеф
     relief_options = ["<=1", "1-3"]
     relief_slope = ask_choice("Угол склона (градусы):", relief_options, "<=1")
-    
+
     # Вычисление
     k_ob = calculate_k_ob(
         operation_type=op_type,
@@ -1419,7 +1419,7 @@ def ask_k_ob_parameters() -> Tuple[float, Dict[str, str]]:
         obstacles_pct=obstacles_pct,
         relief_slope=relief_slope,
     )
-    
+
     raw_params = {
         "operation_type": op_type,
         "stoniness": stoniness,
@@ -1428,12 +1428,13 @@ def ask_k_ob_parameters() -> Tuple[float, Dict[str, str]]:
         "obstacles_pct": obstacles_pct,
         "relief_slope": relief_slope,
     }
-    
+
     print(f"\n  ✅ K_об = {k_ob:.4f}")
     if k_ob < 0.85:
-        print("  ⚠️  Тяжёлые полевые условия: моточасы увеличатся на "
-              f"{(1.0/k_ob - 1.0)*100:.0f}%")
-    
+        print(
+            f"  ⚠️  Тяжёлые полевые условия: моточасы увеличатся на {(1.0 / k_ob - 1.0) * 100:.0f}%"
+        )
+
     return k_ob, raw_params
 
 
@@ -3055,7 +3056,14 @@ def collect_user_inputs(
                     operation_names_ru[op_key] = OPERATION_INFO[op_key].get("name_ru", op_key)
 
             print(
-                "\n" + format_crop_summary(crop_key, crop_area, cfg.peaks, operation_names_ru, cfg.k_ob)
+                "\n"
+                + format_crop_summary(
+                    crop_key,
+                    crop_area,
+                    tractor=tractor,
+                    k_ob=cfg.k_ob,
+                    operation_names_ru=operation_names_ru,
+                )
             )
 
             # ─── Проверка горизонта калибровки ────────────────────
