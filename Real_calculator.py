@@ -1098,6 +1098,10 @@ class CalculatorConfig:
     crop_weighted_peak: float | None = None
     crop_total_hours: float | None = None
 
+    # ─── Фаза X: K_об ──────────────────────────────────────────────
+    k_ob: float = 1.0
+    k_ob_params: Dict[str, str] = field(default_factory=dict)
+
 
 # ---------------------------------------------------------------------------
 # Formatting helpers
@@ -1355,6 +1359,82 @@ def ask_crop_selection(extended: dict[str, Any]) -> Tuple[str, float]:
         pass
 
     return "", 0.0
+
+
+def ask_k_ob_parameters() -> Tuple[float, Dict[str, str]]:
+    """
+    Запрос параметров K_об у пользователя.
+    
+    Returns
+    -------
+    Tuple[float, Dict[str, str]]
+        (k_ob_value, raw_params)
+    """
+    if not HAS_AGRO_NORMS:
+        return 1.0, {}
+    
+    from agro_norms import calculate_k_ob
+    
+    print("\n" + "=" * 60)
+    print("ПОПРАВОЧНЫЙ КОЭФФИЦИЕНТ ПОЛЕВЫХ УСЛОВИЙ (K_об)")
+    print("Источник: Сроки.ПДФ, Таблица 1.1, формула 1.2")
+    print("=" * 60)
+    print("K_об = K_K × K_h × K_C × K_П × K_R")
+    print("Чем хуже условия → тем меньше K_об → тем больше моточасов")
+    print()
+    
+    # 1. Тип работ
+    op_type_options = ["пахотные", "непахотные", "кошение трав"]
+    op_type = ask_choice("Тип работ:", op_type_options, "пахотные")
+    
+    # 2. Каменистость
+    stoniness_options = ["отсутствует", "слабая", "средняя", "сильная"]
+    stoniness = ask_choice("Степень каменистости почвы:", stoniness_options, "отсутствует")
+    
+    # 3. Высота над уровнем моря
+    altitude_options = ["до 500", "500-1000", "1000-1500", "1500-2000"]
+    altitude = ask_choice("Высота над уровнем моря (м):", altitude_options, "до 500")
+    
+    # 4. Сложность конфигурации полей
+    config_options = ["I", "II", "III", "IV", "V"]
+    print("Группы сложности: I = простые поля, V = очень сложные")
+    field_config = ask_choice("Группа сложности конфигурации полей:", config_options, "I")
+    
+    # 5. Изрезанность препятствиями
+    obstacles_options = ["0", "до 5", "5-10", "10-15", "15-20", "20-25", "25-30", "30-35"]
+    obstacles_pct = ask_choice(
+        "Площадь, занимаемая препятствиями (%):", obstacles_options, "0"
+    )
+    
+    # 6. Рельеф
+    relief_options = ["<=1", "1-3"]
+    relief_slope = ask_choice("Угол склона (градусы):", relief_options, "<=1")
+    
+    # Вычисление
+    k_ob = calculate_k_ob(
+        operation_type=op_type,
+        stoniness=stoniness,
+        altitude=altitude,
+        field_config=field_config,
+        obstacles_pct=obstacles_pct,
+        relief_slope=relief_slope,
+    )
+    
+    raw_params = {
+        "operation_type": op_type,
+        "stoniness": stoniness,
+        "altitude": altitude,
+        "field_config": field_config,
+        "obstacles_pct": obstacles_pct,
+        "relief_slope": relief_slope,
+    }
+    
+    print(f"\n  ✅ K_об = {k_ob:.4f}")
+    if k_ob < 0.85:
+        print("  ⚠️  Тяжёлые полевые условия: моточасы увеличатся на "
+              f"{(1.0/k_ob - 1.0)*100:.0f}%")
+    
+    return k_ob, raw_params
 
 
 def _map_brand_to_tractor(brand_name: str) -> str:
@@ -2950,10 +3030,14 @@ def collect_user_inputs(
             brand_name = cfg.extended.get("brand", "МТЗ-82")
             tractor = _map_brand_to_tractor(brand_name)
 
+            # ─── Фаза X: K_об ──────────────────────────────────────
+            if HAS_AGRO_NORMS:
+                cfg.k_ob, cfg.k_ob_params = ask_k_ob_parameters()
+
             # Вычислить средневзвешенный пик и суммарные моточасы
             # (estimate_season_engine_hours уже использует OPERATION_INFO внутри себя)
             total_hours, weighted_peak = estimate_season_engine_hours(
-                crop_key, crop_area, tractor=tractor, k_ob=1.0
+                crop_key, crop_area, tractor=tractor, k_ob=cfg.k_ob
             )
 
             # Переопределить пики и горизонт
@@ -2971,7 +3055,7 @@ def collect_user_inputs(
                     operation_names_ru[op_key] = OPERATION_INFO[op_key].get("name_ru", op_key)
 
             print(
-                "\n" + format_crop_summary(crop_key, crop_area, cfg.peaks, operation_names_ru)
+                "\n" + format_crop_summary(crop_key, crop_area, cfg.peaks, operation_names_ru, cfg.k_ob)
             )
 
             # ─── Проверка горизонта калибровки ────────────────────
