@@ -63,6 +63,7 @@ from Итог import cragg_donald_stat  # type: ignore[attr-defined]
 
 # noinspection PyUnresolvedReferences
 from Итог import endogeneity_lr_test  # type: ignore[attr-defined]
+
 # noinspection PyUnresolvedReferences
 from Итог import interaction_lr_test  # type: ignore[attr-defined]
 
@@ -135,9 +136,7 @@ try:
     # noinspection PyUnresolvedReferences
     from Итог import major_failure_beta_prior  # type: ignore[attr-defined]
 except ImportError:
-    logger.warning(
-        "major_failure_beta_prior не найден в Итог.py, используется fallback."
-    )
+    logger.warning("major_failure_beta_prior не найден в Итог.py, используется fallback.")
 
     def major_failure_beta_prior(mean: float, effective_n: float) -> Dict[str, float]:
         """
@@ -150,9 +149,7 @@ except ImportError:
         if not (0.0 < mean < 1.0):
             raise ValueError("major_failure_beta_prior: mean должно быть в (0, 1)")
         if effective_n <= 0.0:
-            raise ValueError(
-                "major_failure_beta_prior: effective_n должно быть положительным"
-            )
+            raise ValueError("major_failure_beta_prior: effective_n должно быть положительным")
         alpha = mean * effective_n
         beta = (1.0 - mean) * effective_n
         return {
@@ -167,9 +164,7 @@ try:
     # noinspection PyUnresolvedReferences
     from Итог import RF_HEAVY_BRAND_CATALOG  # type: ignore[attr-defined]
 except ImportError:
-    logger.warning(
-        "RF_HEAVY_BRAND_CATALOG не найден в Итог.py, используется пустой fallback."
-    )
+    logger.warning("RF_HEAVY_BRAND_CATALOG не найден в Итог.py, используется пустой fallback.")
     RF_HEAVY_BRAND_CATALOG = {}
 
 # noinspection PyUnresolvedReferences
@@ -200,11 +195,13 @@ try:
         BaselineSpec,
         VALID_PARAMETRIC_FAMILIES,
     )
+
     HAS_PARAMETRIC_BASELINE = True
 except ImportError:
     HAS_PARAMETRIC_BASELINE = False
     VALID_PARAMETRIC_FAMILIES = frozenset()
     logger.info("parametric_baseline.py не найден: параметрический базовый риск отключён")
+
 
 # ★ FIX: локальные helpers для bootstrap SE (не экспортируются из prediction_engine)
 def _dict_get_normalized(d: Any, key: Any, default: Any = None) -> Any:
@@ -583,6 +580,7 @@ class _ReducedFormFirstStageStub:
     build_model_artifact() в режиме reduced_form.
     .fitted.fittedvalues возвращает массив нулей длиной n.
     """
+
     def __init__(self, n: int):
         self._n = int(n)
         self.fittedvalues = np.zeros(self._n, dtype=float)
@@ -627,8 +625,7 @@ def fit_reduced_form_pipeline(
         from Итог import fit_reduced_form_cox  # type: ignore[attr-defined]
     except ImportError as exc:
         raise RuntimeError(
-            "fit_reduced_form_cox не найдена в Итог.py. "
-            "Примените Патч C.1."
+            "fit_reduced_form_cox не найдена в Итог.py. Примените Патч C.1."
         ) from exc
 
     opts = CFFitOptions(
@@ -837,9 +834,7 @@ def sanity_check_target_probability(
         )
 
     if ed == "total_loss" and p > 0.10:
-        print(
-            "⚠️  target_probability > 10% при event_definition='total_loss' выглядит завышенным."
-        )
+        print("⚠️  target_probability > 10% при event_definition='total_loss' выглядит завышенным.")
 
     if ed == "major_claim" and not (0.02 <= p <= 0.35):
         print(
@@ -1034,9 +1029,7 @@ def _call_with_supported_kwargs(
         return func(**required_kwargs)
 
     kwargs = dict(required_kwargs)
-    has_var_keyword = any(
-        p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
-    )
+    has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
 
     for key, value in optional_kwargs.items():
         if value is None:
@@ -1341,9 +1334,7 @@ def set_dgp_field(dgp: Any, name: str, value: Any) -> Any:
                     data[name] = value
                     return type(dgp)(**data)
                 except (TypeError, ValueError) as exc2:
-                    raise RuntimeError(
-                        f"Не удалось обновить DGP поле '{name}'"
-                    ) from exc2
+                    raise RuntimeError(f"Не удалось обновить DGP поле '{name}'") from exc2
             raise RuntimeError(f"Не удалось обновить DGP поле '{name}'") from exc
 
     raise RuntimeError(f"Не удалось обновить DGP поле '{name}'")
@@ -1402,9 +1393,7 @@ def compute_initial_baseline(
                 raise OverflowError
             return float(neg_log / t_pow_k)
         except OverflowError:
-            logger.warning(
-                "Weibull initial baseline overflow, fallback к exponential-like initial"
-            )
+            logger.warning("Weibull initial baseline overflow, fallback к exponential-like initial")
             return float(neg_log / time_horizon)
 
     if fam == "gompertz":
@@ -1666,7 +1655,6 @@ def calibrate_baseline_by_quantile(
     return float(best_h), diagnostics
 
 
-
 # ---------------------------------------------------------------------------
 # Bootstrap SE for generated regressors (Issue #4)
 # ---------------------------------------------------------------------------
@@ -1702,7 +1690,9 @@ def _bootstrap_cox_se(
         n_clusters = len(clusters)
         logger.info(
             "Cluster bootstrap: %d clusters, %d observations, n_jobs=%d",
-            n_clusters, n, n_jobs,
+            n_clusters,
+            n,
+            n_jobs,
         )
 
     def _single_bootstrap_iteration(b: int):
@@ -1716,7 +1706,9 @@ def _bootstrap_cox_se(
                 if n_unique_in_boot < n_clusters * 0.5:
                     logger.debug(
                         "Bootstrap iter %d: только %d/%d уникальных кластеров",
-                        b, n_unique_in_boot, n_clusters,
+                        b,
+                        n_unique_in_boot,
+                        n_clusters,
                     )
                 boot_indices = []
                 for bc in boot_clusters:
@@ -1779,12 +1771,14 @@ def _bootstrap_cox_se(
         if len(values) < 10:
             logger.warning(
                 "Bootstrap SE for '%s': only %d valid iterations (< 10). Using naive SE.",
-                name, len(values)
+                name,
+                len(values),
             )
             result[name] = float("nan")
             continue
         result[name] = float(np.std(values, ddof=1))
     return result
+
 
 def run_calibration(
     *,
@@ -2007,9 +2001,7 @@ def load_real_covariates_clustered_v2(
 
         # Нормализация x_soil
         soil_col = (
-            "soil_index_normalized"
-            if "soil_index_normalized" in sdf.columns
-            else "soil_index"
+            "soil_index_normalized" if "soil_index_normalized" in sdf.columns else "soil_index"
         )
         soil_vals_all = pd.to_numeric(sdf[soil_col], errors="coerce")
         s_min: float = 0.0
@@ -2032,9 +2024,7 @@ def load_real_covariates_clustered_v2(
             w_match = wdf[(wdf["region_code"] == region) & (wdf["year"] == year)]
             if len(w_match) == 0:
                 continue
-            wd = float(
-                pd.to_numeric(w_match["working_days_window"].iloc[0], errors="coerce")
-            )
+            wd = float(pd.to_numeric(w_match["working_days_window"].iloc[0], errors="coerce"))
             x_clim = (wd - wd_min) / (wd_max - wd_min) if wd_max > wd_min else 0.5
 
             # x_soil для этого кластера
@@ -2067,8 +2057,7 @@ def load_real_covariates_clustered_v2(
         return result
 
     logger.info(
-        f"✅ Кластерная генерация: {n_clusters} кластеров, "
-        f"~{n // n_clusters} тракторов/кластер"
+        f"✅ Кластерная генерация: {n_clusters} кластеров, ~{n // n_clusters} тракторов/кластер"
     )
 
     # Распределение тракторов по кластерам
@@ -2182,9 +2171,7 @@ def compute_iv_diagnostics(
 
             if cd_weak_raw is None:
                 if cd_stat_f is not None:
-                    iv["cragg_donald_weak"] = bool(
-                        cd_stat_f < AUTO_INSTRUMENT_THRESHOLD
-                    )
+                    iv["cragg_donald_weak"] = bool(cd_stat_f < AUTO_INSTRUMENT_THRESHOLD)
                 else:
                     iv["cragg_donald_weak"] = None
             else:
@@ -2323,13 +2310,10 @@ def run_ph_diagnostics(cf: Any, data_mod: pd.DataFrame) -> Dict[str, Any]:
         for col in cox_names:
             if col in data_mod.columns:
                 cols.append(col)
-        missing_model_cols = [
-            col for col in cox_names if col not in data_mod.columns
-        ]
+        missing_model_cols = [col for col in cox_names if col not in data_mod.columns]
         if missing_model_cols:
             result["note"] = (
-                f"PH diagnostics skipped: missing model columns "
-                f"in data_mod: {missing_model_cols}"
+                f"PH diagnostics skipped: missing model columns in data_mod: {missing_model_cols}"
             )
             return result
         try:
@@ -2413,10 +2397,10 @@ def serialize_baseline(h_df: Any) -> Dict[str, List[float]]:
     # PATCH 3: Более надежный способ агрегации дубликатов через pandas groupby
     # np.maximum.reduceat может работать некорректно, если дубликаты не идут подряд
     # (хотя после argsort это маловероятно). pandas groupby более явный и надежный.
-    df = pd.DataFrame({'times': times, 'values': values})
-    df = df.groupby('times', sort=True)['values'].max().reset_index()
-    times = df['times'].values
-    values = df['values'].values
+    df = pd.DataFrame({"times": times, "values": values})
+    df = df.groupby("times", sort=True)["values"].max().reset_index()
+    times = df["times"].values
+    values = df["values"].values
 
     if len(times) == 0:
         raise RuntimeError("baseline became empty after aggregation")
@@ -2510,6 +2494,7 @@ def build_raw_template_covariates(data: pd.DataFrame) -> Dict[str, float]:
         "x_age_hours": safe_mean("x_age_hours", 0.0),
     }
 
+
 def _compute_major_failure_calibration(
     data: pd.DataFrame,
     prior_mean: float,
@@ -2575,13 +2560,13 @@ def _compute_major_failure_calibration(
     # 95% Credible Interval
     try:
         from scipy import stats as _st
+
         ci_low = float(_st.beta.ppf(0.025, alpha_post, beta_post))
         ci_high = float(_st.beta.ppf(0.975, alpha_post, beta_post))
     except Exception:
-        sd = float(np.sqrt(
-            posterior_mean * (1.0 - posterior_mean)
-            / (alpha_post + beta_post + 1.0)
-        ))
+        sd = float(
+            np.sqrt(posterior_mean * (1.0 - posterior_mean) / (alpha_post + beta_post + 1.0))
+        )
         ci_low = max(0.0, posterior_mean - 1.96 * sd)
         ci_high = min(1.0, posterior_mean + 1.96 * sd)
 
@@ -2621,9 +2606,7 @@ def _compute_major_failure_calibration(
             brand_mask = events_data[brand_col] == brand_val
             brand_events = events_data.loc[brand_mask]
             brand_n = len(brand_events)
-            brand_major = int(
-                (brand_events["failure_type"].astype(str) == "major").sum()
-            )
+            brand_major = int((brand_events["failure_type"].astype(str) == "major").sum())
 
             # Raw share
             raw_share = brand_major / brand_n if brand_n > 0 else float("nan")
@@ -2650,6 +2633,7 @@ def _compute_major_failure_calibration(
     result["by_brand_posterior"] = by_brand_posterior
 
     return result
+
 
 # ---------------------------------------------------------------------------
 # Partial-out helper
@@ -2702,17 +2686,13 @@ def compute_partial_out_fields(
             ]
         else:
             # Fallback на X_STANDARDIZATION (legacy поведение).
-            x_cols = [
-                str(col) for col in X_STANDARDIZATION.keys() if col in data_mod.columns
-            ]
+            x_cols = [str(col) for col in X_STANDARDIZATION.keys() if col in data_mod.columns]
 
         if x_cols:
             params_obj = getattr(fitted_fs, "params", None)
             params_dict = _safe_params_to_float_dict(params_obj)
 
-            partial_betas = {
-                col: params_dict[col] for col in x_cols if col in params_dict
-            }
+            partial_betas = {col: params_dict[col] for col in x_cols if col in params_dict}
             training_x_means = {col: float(data_mod[col].mean()) for col in x_cols}
 
         # Fallback, если first-stage params по какой-то причине недоступны.
@@ -2722,13 +2702,9 @@ def compute_partial_out_fields(
                 ols = sm.OLS(pl_hat, x_design).fit()
 
                 partial_betas = {
-                    str(col): float(ols.params[col])
-                    for col in x_cols
-                    if col in ols.params.index
+                    str(col): float(ols.params[col]) for col in x_cols if col in ols.params.index
                 }
-                training_x_means = {
-                    str(col): float(data_mod[col].mean()) for col in x_cols
-                }
+                training_x_means = {str(col): float(data_mod[col].mean()) for col in x_cols}
             except (ValueError, TypeError, RuntimeError):
                 partial_betas = {}
                 training_x_means = {}
@@ -2754,9 +2730,7 @@ def compute_partial_out_fields(
     partial_betas = clean_partial_betas
     training_x_means = clean_training_x_means
 
-    missing_means = [
-        str(name) for name in partial_betas if str(name) not in training_x_means
-    ]
+    missing_means = [str(name) for name in partial_betas if str(name) not in training_x_means]
     if missing_means:
         logger.warning(
             "training_x_means missing for partial_out variables: %s. Filling.",
@@ -2840,9 +2814,7 @@ def prepare_cf_basis_metadata(
         cox_names = [str(name) for name in _safe_keys(params_obj)]
 
         meta["v_hat_cols"] = [
-            str(name)
-            for name in cox_names
-            if str(name).lower().startswith(("v_hat", "eps_d_hat"))
+            str(name) for name in cox_names if str(name).lower().startswith(("v_hat", "eps_d_hat"))
         ]
 
         if not meta.get("v_hat_cols"):
@@ -2851,9 +2823,7 @@ def prepare_cf_basis_metadata(
             )
 
     if "linear_standardized" not in meta:
-        has_old_linear = any(
-            str(col).lower() == "eps_d_hat" for col in meta.get("v_hat_cols", [])
-        )
+        has_old_linear = any(str(col).lower() == "eps_d_hat" for col in meta.get("v_hat_cols", []))
         meta["linear_standardized"] = not has_old_linear
 
     meta["cf_standardization_convention"] = "residual_mean_std"
@@ -2894,9 +2864,7 @@ def _safe_row_float(row: pd.Series, key: str, default: float) -> float:
     return float(default)
 
 
-def _row_covariates(
-    row: pd.Series, template_dict: Dict[str, float]
-) -> Dict[str, float]:
+def _row_covariates(row: pd.Series, template_dict: Dict[str, float]) -> Dict[str, float]:
     return {
         "Z": _safe_row_float(row, "Z", template_dict.get("Z", 0.0)),
         "x_age": _safe_row_float(
@@ -3072,12 +3040,8 @@ def collect_training_config() -> TrainingConfig:
                 with open(tum_stats_path, "r", encoding="utf-8") as f:
                     tum_stats = json.load(f)
 
-                cfg.tum_peakload_target_mean = _as_float_or_none(
-                    tum_stats.get("tum_peakload_mean")
-                )
-                cfg.tum_peakload_target_std = _as_float_or_none(
-                    tum_stats.get("tum_peakload_std")
-                )
+                cfg.tum_peakload_target_mean = _as_float_or_none(tum_stats.get("tum_peakload_mean"))
+                cfg.tum_peakload_target_std = _as_float_or_none(tum_stats.get("tum_peakload_std"))
 
                 if (
                     cfg.tum_peakload_target_mean is not None
@@ -3111,10 +3075,7 @@ def collect_training_config() -> TrainingConfig:
     print("Согласовано с DGP v3.0 и обновлённым Итог.py")
     print("=" * 70)
 
-    if (
-        cfg.tum_peakload_target_mean is not None
-        and cfg.tum_peakload_target_std is not None
-    ):
+    if cfg.tum_peakload_target_mean is not None and cfg.tum_peakload_target_std is not None:
         print(
             f"✅ TUM PeakLoad калибровка: mean={cfg.tum_peakload_target_mean:.4f}, "
             f"std={cfg.tum_peakload_target_std:.4f}"
@@ -3155,9 +3116,7 @@ def collect_training_config() -> TrainingConfig:
         if weather_path.exists():
             logger.info("✅ weather_windows.csv найден")
         else:
-            logger.warning(
-                "⚠️ weather_windows.csv не найден, будет синтетический fallback"
-            )
+            logger.warning("⚠️ weather_windows.csv не найден, будет синтетический fallback")
 
         if soil_path.exists():
             logger.info("✅ soil_windows.csv найден")
@@ -3217,17 +3176,13 @@ def collect_training_config() -> TrainingConfig:
         else:
             cfg.contamination_probability = 0.0
 
-        cfg.stress_test_mode = bool(
-            cfg.contamination and cfg.contamination_probability > 0.0
-        )
+        cfg.stress_test_mode = bool(cfg.contamination and cfg.contamination_probability > 0.0)
 
         if cfg.contamination and cfg.contamination_probability <= 0.0:
             logger.warning("contamination=True, но contamination_probability <= 0")
 
         if not cfg.contamination and cfg.contamination_probability > 0.0:
-            logger.warning(
-                "contamination_probability игнорируется, потому что contamination=False"
-            )
+            logger.warning("contamination_probability игнорируется, потому что contamination=False")
 
         # ─── DGP parameters ─────────────────────────────────────────────────────
         print()
@@ -3239,9 +3194,7 @@ def collect_training_config() -> TrainingConfig:
         )
         validate_finite(cfg.gamma, "gamma")
 
-        cfg.rho = ask_float(
-            "rho (корреляция ошибок)", 0.7, min_value=-0.999999, max_value=0.999999
-        )
+        cfg.rho = ask_float("rho (корреляция ошибок)", 0.7, min_value=-0.999999, max_value=0.999999)
         validate_finite(cfg.rho, "rho")
         if not (-1.0 < cfg.rho < 1.0):
             raise ValueError("rho должно быть в открытом диапазоне (-1, 1)")
@@ -3257,12 +3210,17 @@ def collect_training_config() -> TrainingConfig:
             print("ВНИМАНИЕ: delta > 0.5 может давать большой разброс hazard.")
             if not ask_yesno("Продолжить с delta > 0.5?", False):
                 cfg.delta = ask_float(
-                    "Введите delta (0.0–0.7, где 0 = нет гетерогенности)", 0.5, min_value=0.0, max_value=0.7
+                    "Введите delta (0.0–0.7, где 0 = нет гетерогенности)",
+                    0.5,
+                    min_value=0.0,
+                    max_value=0.7,
                 )
 
         cfg.beta_age_hours = ask_float(
-            "beta_age_hours (синергия возраст×наработка, 0=нет)", 0.15,
-            min_value=0.0, max_value=1.0,
+            "beta_age_hours (синергия возраст×наработка, 0=нет)",
+            0.15,
+            min_value=0.0,
+            max_value=1.0,
         )
 
         cfg.fs_intercept = ask_float(
@@ -3282,9 +3240,7 @@ def collect_training_config() -> TrainingConfig:
 
         if intercept_diff > 0.01:
             print("ВНИМАНИЕ: fs_intercept != structural_intercept.")
-            if ask_yesno(
-                f"Установить structural_intercept = {cfg.fs_intercept}?", True
-            ):
+            if ask_yesno(f"Установить structural_intercept = {cfg.fs_intercept}?", True):
                 cfg.structural_intercept = cfg.fs_intercept
             else:
                 raise ValueError(
@@ -3313,7 +3269,10 @@ def collect_training_config() -> TrainingConfig:
         cfg.baseline_shape = None
         if cfg.baseline_family == "weibull":
             cfg.baseline_shape = ask_float(
-                "Weibull shape — параметр формы (>1 = риск растёт со временем)", DEFAULT_WEIBULL_SHAPE, min_value=0.05, max_value=10.0
+                "Weibull shape — параметр формы (>1 = риск растёт со временем)",
+                DEFAULT_WEIBULL_SHAPE,
+                min_value=0.05,
+                max_value=10.0,
             )
         elif cfg.baseline_family == "gompertz":
             cfg.baseline_shape = ask_float(
@@ -3330,9 +3289,7 @@ def collect_training_config() -> TrainingConfig:
         print("  2) gompertz     — H0(t) = (λ/b)(e^{bt} - 1)")
         print("  3) exponential  — H0(t) = λ·t")
         print("  4) none         — без подгонки (только Breslow)")
-        parametric_choice = ask(
-            "Семейство для подгонки базового риска", "1"
-        ).strip() or "1"
+        parametric_choice = ask("Семейство для подгонки базового риска", "1").strip() or "1"
         cfg.parametric_baseline_fit = {
             "1": "weibull",
             "2": "gompertz",
@@ -3352,7 +3309,10 @@ def collect_training_config() -> TrainingConfig:
         print("  2) major_claim — крупный страховой случай (рекомендуется)")
         print("  3) any_failure — любой отказ")
 
-        ed_choice = ask("Выберите (1 = полная гибель, 2 = крупный случай, 3 = любой отказ)", "2").strip() or "2"
+        ed_choice = (
+            ask("Выберите (1 = полная гибель, 2 = крупный случай, 3 = любой отказ)", "2").strip()
+            or "2"
+        )
         cfg.event_definition = {
             "1": "total_loss",
             "2": "major_claim",
@@ -3542,13 +3502,11 @@ def collect_training_config() -> TrainingConfig:
         # Генерация имени файла по конвенции v1.0
         default_path = generate_model_filename("1.0", cfg.segment)
         cfg.out_path = ask(
-            "Путь сохранения модели (рекомендуемый: model_params.json)",
-            default_path
+            "Путь сохранения модели (рекомендуемый: model_params.json)", default_path
         )
     else:
         cfg.out_path = ask(
-            "Путь сохранения модели (рекомендуемый: model_params.json)",
-            "model_params.json"
+            "Путь сохранения модели (рекомендуемый: model_params.json)", "model_params.json"
         )
 
     # ─── CF basis choice ────────────────────────────────────────────────────
@@ -3558,25 +3516,24 @@ def collect_training_config() -> TrainingConfig:
     print("2) powers")
     print("3) spline")
 
-    cf_choice = ask(
-        "Тип контрольной функции: 1) linear — линейная, 2) powers — степени, 3) spline — сплайн",
-        "1"
-    ).strip() or "1"
+    cf_choice = (
+        ask(
+            "Тип контрольной функции: 1) linear — линейная, 2) powers — степени, 3) spline — сплайн",
+            "1",
+        ).strip()
+        or "1"
+    )
 
     if cf_choice == "2":
         cfg.v_hat_basis = "powers"
-        max_power = ask_int(
-            "max_power — максимальная степень контрольной функции (1–10)", 2
-        )
+        max_power = ask_int("max_power — максимальная степень контрольной функции (1–10)", 2)
         max_power = max(1, min(int(max_power), 10))
         cfg.v_hat_basis_params = {"max_power": max_power}
         if max_power > 4:
             logger.warning("max_power > 4 может привести к переобучению")
     elif cf_choice == "3":
         cfg.v_hat_basis = "spline"
-        n_knots = ask_int(
-            "n_knots — количество узлов сплайна (1–10)", 2
-        )
+        n_knots = ask_int("n_knots — количество узлов сплайна (1–10)", 2)
         n_knots = max(1, min(int(n_knots), 10))
         cfg.v_hat_basis_params = {"n_knots": n_knots}
         if n_knots > 5:
@@ -3591,10 +3548,13 @@ def collect_training_config() -> TrainingConfig:
     print("  1) normal         — стандартный N(0,1)")
     print("  2) weather        — синтетический погодный Normal(45, 12)")
     print("  3) weather_real   — реальные данные NASA POWER")
-    instrument_choice = ask(
-        "Источник инструмента Z (для устранения смещения PeakLoad): 1) normal — стандартный, 2) weather — синтетический, 3) weather_real — реальные данные NASA POWER",
-        "1"
-    ).strip() or "1"
+    instrument_choice = (
+        ask(
+            "Источник инструмента Z (для устранения смещения PeakLoad): 1) normal — стандартный, 2) weather — синтетический, 3) weather_real — реальные данные NASA POWER",
+            "1",
+        ).strip()
+        or "1"
+    )
 
     instrument_source = "normal"
     weather_campaign = "sowing"
@@ -3690,15 +3650,15 @@ def collect_training_config() -> TrainingConfig:
         print("Источник данных о почве (для симуляции):")
         print("  1) synthetic      — Beta(2.0, 2.5) распределение")
         print("  2) soil_real      — реальные данные GLDAS-2.1")
-        soil_choice = ask(
-            "Источник soil-данных: 1) synthetic — Beta(2.0, 2.5), 2) soil_real — GLDAS-2.1",
-            "1"
-        ).strip() or "1"
+        soil_choice = (
+            ask(
+                "Источник soil-данных: 1) synthetic — Beta(2.0, 2.5), 2) soil_real — GLDAS-2.1", "1"
+            ).strip()
+            or "1"
+        )
         if soil_choice == "2":
             soil_source = "soil_real"
-            logger.info(
-                "Используется реальный soil из GLDAS-2.1 (только для симуляции)"
-            )
+            logger.info("Используется реальный soil из GLDAS-2.1 (только для симуляции)")
         else:
             soil_source = "synthetic"
 
@@ -3710,9 +3670,7 @@ def collect_training_config() -> TrainingConfig:
     print("  1) control_function — CF Cox с 2SRI (попытка каузальной коррекции)")
     print("  2) reduced_form     — предиктивная модель (Z как ковариата, без v_hat)")
     print("     Рекомендуется при нарушении exclusion restriction.")
-    form_choice = ask(
-        "Форма модели (1 = control_function, 2 = reduced_form)", "1"
-    ).strip() or "1"
+    form_choice = ask("Форма модели (1 = control_function, 2 = reduced_form)", "1").strip() or "1"
     cfg.model_form = {
         "1": "control_function",
         "2": "reduced_form",
@@ -3726,9 +3684,7 @@ def collect_training_config() -> TrainingConfig:
     return cfg
 
 
-def build_dgp_from_config(
-    cfg: TrainingConfig, use_hybrid: bool = False
-) -> DGPParameters:
+def build_dgp_from_config(cfg: TrainingConfig, use_hybrid: bool = False) -> DGPParameters:
     """Создать DGPParameters из TrainingConfig."""
     return construct_dgp(
         {
@@ -3928,9 +3884,7 @@ def fit_first_stage_and_cf(
     print("Первая стадия и IV-диагностика")
     print("-" * 70)
 
-    fitted_fs, resid, fs_names, fs_params, iv_diagnostics = run_first_stage_and_iv(
-        data_mod
-    )
+    fitted_fs, resid, fs_names, fs_params, iv_diagnostics = run_first_stage_and_iv(data_mod)
 
     print(f"F-statistic: {iv_diagnostics['f_statistic']}")
     print(f"Cragg-Donald: {iv_diagnostics['cragg_donald_stat']}")
@@ -3941,20 +3895,14 @@ def fit_first_stage_and_cf(
     try:
         cluster_col = "cluster_id" if "cluster_id" in data_mod.columns else None
         if cluster_col is not None:
-            fitted_cr, cr_diag = fit_first_stage_cluster_robust(
-                data_mod, cluster_col=cluster_col
-            )
-            iv_diagnostics["f_statistic_cluster_robust"] = cr_diag[
-                "f_statistic_cluster_robust"
-            ]
+            fitted_cr, cr_diag = fit_first_stage_cluster_robust(data_mod, cluster_col=cluster_col)
+            iv_diagnostics["f_statistic_cluster_robust"] = cr_diag["f_statistic_cluster_robust"]
             iv_diagnostics["p_value_cluster_robust"] = cr_diag["p_value_cluster_robust"]
             iv_diagnostics["n_clusters"] = cr_diag["n_clusters"]
             iv_diagnostics["pi_z_cluster_robust"] = cr_diag["pi_z"]
             iv_diagnostics["se_pi_z_cluster_robust"] = cr_diag["se_pi_z_cluster"]
             print(f"\nCluster-robust диагностика (n_clusters={cr_diag['n_clusters']})")
-            print(
-                f"  F_stat_cluster_robust: {cr_diag['f_statistic_cluster_robust']:.2f}"
-            )
+            print(f"  F_stat_cluster_robust: {cr_diag['f_statistic_cluster_robust']:.2f}")
             print(f"  p_value_cluster_robust: {cr_diag['p_value_cluster_robust']:.4f}")
             print(
                 f"  π_Z (cluster-robust SE): {cr_diag['pi_z']:.4f} ± {cr_diag['se_pi_z_cluster']:.4f}"
@@ -4007,12 +3955,12 @@ def fit_first_stage_and_cf(
     # модель должна переключаться в predictive режим без попыток "лечения" данных.
     # См. Stock & Yogo (2005) для критических значений F-статистики.
     weak_instrument_fixed = False
-    
+
     f_weak = iv_diagnostics.get("f_statistic_weak")
     cd_weak = iv_diagnostics.get("cragg_donald_weak")
-    
+
     needs_strength = (f_weak is True) or (cd_weak is True)
-    
+
     if needs_strength:
         f_stat_val = iv_diagnostics.get("f_statistic", 0.0)
         logger.warning(
@@ -4020,9 +3968,9 @@ def fit_first_stage_and_cf(
             "(F-statistic = %.2f < 10.4 по Stock-Yogo). "
             "Каузальная интерпретация коэффициента γ НЕВОЗМОЖНА. "
             "Автоматическая коррекция fs_z удалена как методологически некорректная.",
-            f_stat_val
+            f_stat_val,
         )
-        
+
         # Принудительное переключение в predictive режим
         print()
         print("=" * 70)
@@ -4034,7 +3982,7 @@ def fit_first_stage_and_cf(
         print("Каузальные утверждения о влиянии PeakLoad на отказы НЕКОРРЕКТНЫ.")
         print("=" * 70)
         print()
-        
+
         # Переопределяем iv_mode в predictive
         iv_mode = IV_MODE_PREDICTIVE
         logger.info("IV-режим изменён на '%s' из-за слабого инструмента", iv_mode)
@@ -4113,8 +4061,7 @@ def fit_first_stage_and_cf(
             g_p = global_test.get("p_value", float("nan"))
             g_reject = global_test.get("reject_at_alpha", False)
             g_verdict = "FAIL" if g_reject else "PASS"
-            print(f"\nGlobal PH verdict: {g_verdict} "
-                  f"(stat={g_stat:.4f}, p={g_p:.6f})")
+            print(f"\nGlobal PH verdict: {g_verdict} (stat={g_stat:.4f}, p={g_p:.6f})")
 
         violations = ph_diagnostics.get("violations", [])
         if violations:
@@ -4135,13 +4082,13 @@ def fit_first_stage_and_cf(
 
     bootstrap_se: Optional[Dict[str, float]] = None
     bootstrap_enabled = _dict_get_normalized(
-        training_meta_flat, "bootstrap_se_enabled", True  # ★ ИЗМЕНЕНО: True по умолчанию
+        training_meta_flat,
+        "bootstrap_se_enabled",
+        True,  # ★ ИЗМЕНЕНО: True по умолчанию
     )
 
     if _as_bool(bootstrap_enabled, False):
-        n_bootstrap = _try_int(
-            _dict_get_normalized(training_meta_flat, "bootstrap_se_n", 50), 50
-        )
+        n_bootstrap = _try_int(_dict_get_normalized(training_meta_flat, "bootstrap_se_n", 50), 50)
         bootstrap_seed = _try_int(
             _dict_get_normalized(training_meta_flat, "bootstrap_se_seed", 42), 42
         )
@@ -4153,6 +4100,7 @@ def fit_first_stage_and_cf(
 
         # ─── Автоподбор n_jobs ───────────────────────────────────────
         import os as _os
+
         _n_cpus = _os.cpu_count() or 1
         _bootstrap_jobs = min(8, max(1, _n_cpus - 2))
 
@@ -4200,14 +4148,15 @@ def fit_first_stage_and_cf(
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning(
-                "Параметрическая подгонка базового риска не удалась (%s). "
-                "Используется Breslow.", exc,
+                "Параметрическая подгонка базового риска не удалась (%s). Используется Breslow.",
+                exc,
             )
             baseline_spec_dict = {"family": "breslow"}
     elif parametric_family not in ("none", "breslow", ""):
         logger.warning(
             "parametric_baseline_fit='%s' запрошен, но parametric_baseline.py "
-            "недоступен. Используется Breslow.", parametric_family,
+            "недоступен. Используется Breslow.",
+            parametric_family,
         )
 
     # ─── ДИАГНОСТИКА COX-МОДЕЛИ ─────────────────────────────────────────
@@ -4446,10 +4395,8 @@ def build_model_artifact(
         "mtbf_input_unit": MTBF_INPUT_UNIT,
         "mtbf_to_model_time_factor": float(MTBF_TO_MODEL_TIME_FACTOR),
         "default_engine_hours_per_calendar_day": float(DEFAULT_ENGINE_HOURS_PER_CALENDAR_DAY),
-
         # ─── Форма модели (v3.1: Reduced Form) ────────────────────────
         "model_form": str(getattr(cfg, "model_form", "control_function")).lower(),
-
         "event_definition": cfg.event_definition,
         "competing_risks": bool(cfg.competing_risks),
         "minor_failure_rate": float(cfg.minor_failure_rate),
@@ -4596,7 +4543,9 @@ def build_model_artifact(
     _major_overall = _major_calib["overall"]
     _major_posterior_mean = float(_major_overall["posterior_mean"])
 
-    training_meta["major_failure_share"] = _major_posterior_mean  # production value = posterior mean
+    training_meta["major_failure_share"] = (
+        _major_posterior_mean  # production value = posterior mean
+    )
     training_meta["major_failure_share_observed"] = float(_major_overall["observed_share"])
     training_meta["major_failure_share_posterior"] = _major_overall
     training_meta["major_failure_share_by_brand"] = _major_calib["by_brand"]
@@ -4787,9 +4736,7 @@ def validate_save_and_smoke_test(
         if not math.isfinite(test_prob) or not (0.0 <= test_prob <= 1.0):
             raise RuntimeError("Smoke-test probability invalid")
 
-        print(
-            f"Smoke-test prediction: P(T <= {cfg.target_time:.0f} мч) = {test_prob:.6f}"
-        )
+        print(f"Smoke-test prediction: P(T <= {cfg.target_time:.0f} мч) = {test_prob:.6f}")
 
     except (OSError, TypeError, ValueError, AttributeError, RuntimeError) as exc:
         logger.error("Post-save validation/smoke-test failed: %s", exc)
@@ -4847,7 +4794,10 @@ def run_post_training_diagnostics(
         print("🚨 Модель обучена в stress-test режиме.")
         print("   НЕ использовать для продуктового ценообразования.")
 
-    if not fit["iv_diagnostics"].get("instrument_adequate", False):
+    model_form = str(fit.get("iv_diagnostics", {}).get("model_form", "control_function"))
+    if model_form == "reduced_form":
+        print("ℹ️  Reduced Form: IV-диагностика не применяется (нет первой стадии).")
+    elif not fit["iv_diagnostics"].get("instrument_adequate", False):
         print("⚠️  Инструмент слабый или диагностика неполная.")
 
     brand_encoding_used = loaded_params.training_meta.get(
@@ -4992,9 +4942,7 @@ def main() -> int:
         print("Первая стадия на литературных claims")
         print("-" * 70)
 
-        fitted_fs, resid, fs_names, fs_params, iv_diagnostics = (
-            run_first_stage_on_claims(data_mod)
-        )
+        fitted_fs, resid, fs_names, fs_params, iv_diagnostics = run_first_stage_on_claims(data_mod)
         print(f"F-statistic: {iv_diagnostics['f_statistic']:.2f}")
         print(f"Partial R²: {iv_diagnostics['partial_r2']:.4f}")
         print(f"Instrument adequate: {iv_diagnostics['instrument_adequate']}")
@@ -5062,13 +5010,15 @@ def main() -> int:
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "Параметрическая подгонка базового риска не удалась (%s). "
-                    "Используется Breslow.", exc,
+                    "Используется Breslow.",
+                    exc,
                 )
                 baseline_spec_dict = {"family": "breslow"}
         elif parametric_family not in ("none", "breslow", ""):
             logger.warning(
                 "parametric_baseline_fit='%s' запрошен, но parametric_baseline.py "
-                "недоступен. Используется Breslow.", parametric_family,
+                "недоступен. Используется Breslow.",
+                parametric_family,
             )
 
         # Template covariates
@@ -5220,26 +5170,17 @@ def validate_event_semantic_consistency(model_params: Any) -> None:
 
     errors = []
     if top_cr != meta_cr:
-        errors.append(
-            f"competing_risks mismatch: top={top_cr}, training_meta={meta_cr}"
-        )
+        errors.append(f"competing_risks mismatch: top={top_cr}, training_meta={meta_cr}")
     if top_ed != meta_ed:
-        errors.append(
-            f"event_definition mismatch: top={top_ed!r}, training_meta={meta_ed!r}"
-        )
+        errors.append(f"event_definition mismatch: top={top_ed!r}, training_meta={meta_ed!r}")
     if abs(top_mfr - meta_mfr) > 1e-9:
-        errors.append(
-            f"minor_failure_rate mismatch: top={top_mfr}, training_meta={meta_mfr}"
-        )
+        errors.append(f"minor_failure_rate mismatch: top={top_mfr}, training_meta={meta_mfr}")
     if top_seg != meta_seg:
-        errors.append(
-            f"segment mismatch: top={top_seg!r}, training_meta={meta_seg!r}"
-        )
+        errors.append(f"segment mismatch: top={top_seg!r}, training_meta={meta_seg!r}")
 
     if errors:
         raise RuntimeError(
-            "Event semantic consistency violation in model artifact:\n  "
-            + "\n  ".join(errors)
+            "Event semantic consistency violation in model artifact:\n  " + "\n  ".join(errors)
         )
 
 

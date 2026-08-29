@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 real_calculator.py (v3.2-clean + v0.2 + lint fixes + refactoring)
 Переработанный исследовательский калькулятор страховой премии для сельхозтракторов.
 """
 
 from __future__ import annotations
-import sys
+
 import copy
-import math
 import json
 import logging
+import math
 import re
-from pathlib import Path
-from typing import List, Dict, Any, Optional, Set, Tuple, Mapping
+import sys
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import logger
 import numpy as np
 import pandas as pd
 
@@ -38,9 +41,9 @@ def compute_lognormal_variance(mu: float, sigma: float) -> float:
 
     См.: https://en.wikipedia.org/wiki/Log-normal_distribution#Moments
     """
-    return (math.exp(sigma ** 2) - 1.0) * math.exp(2.0 * mu + sigma ** 2)
+    return (math.exp(sigma**2) - 1.0) * math.exp(2.0 * mu + sigma**2)
 
-from diagnose_engine import model  # diagnose_engine удалён — диагностика запускается только явно
+
 
 # Fix for Windows console encoding.
 try:
@@ -58,17 +61,17 @@ except (AttributeError, ValueError, OSError):
 # ---------------------------------------------------------------------------
 # Project imports
 # ---------------------------------------------------------------------------
-from prediction_engine import (
-    load_model_params,
-    ModelParameters,
-    validate_model,
-    transform_peak,
-    baseline_cumulative_hazard,
-    predict_first_stage,
-    compute_pl_hat_exog,
-    predict_probability,
-)
 import prediction_engine
+from prediction_engine import (
+    ModelParameters,
+    baseline_cumulative_hazard,
+    compute_pl_hat_exog,
+    load_model_params,
+    predict_first_stage,
+    predict_probability,
+    transform_peak,
+    validate_model,
+)
 
 # Optional: _build_cf_basis_at_prediction for spline/powers CF basis.
 try:
@@ -80,7 +83,8 @@ from premium_engine import calculate_single_premium
 
 # ─── Параметрический базовый риск и CIF (v3.1) ─────────────────────────────
 try:
-    from parametric_baseline import compute_cif, VALID_PARAMETRIC_FAMILIES
+    from parametric_baseline import VALID_PARAMETRIC_FAMILIES, compute_cif
+
     HAS_PARAMETRIC_CIF = True
 except ImportError:
     HAS_PARAMETRIC_CIF = False
@@ -89,11 +93,11 @@ except ImportError:
         "parametric_baseline.py не найден: CIF-интегрирование недоступно. "
         "Используется пропорциональная формула ω·F."
     )
-from exceptions import ModelLoadError, PredictionError, InvalidInputError
+from exceptions import InvalidInputError, ModelLoadError, PredictionError
 
 # --- Фаза 7.9: severity_model интеграция ---
 try:
-    from severity_model import load_severity_model, SeverityModel
+    from severity_model import SeverityModel, load_severity_model
 
     HAS_SEVERITY_MODEL = True
 except ImportError:
@@ -108,17 +112,17 @@ except ImportError:
 class HeavyTailedSeverityFallback:
     """
     Параметрическая severity-модель с тяжёлым хвостом.
-    
+
     Распределение: Lognormal(μ, σ) для основной массы,
     Pareto(κ, λ) для хвоста (κ > 2 = конечная дисперсия).
-    
+
     Параметры по умолчанию из constants.py:
         SEVERITY_LOGNORMAL_MU = 11.5   (~100 000 руб.)
         SEVERITY_LOGNORMAL_SIGMA = 0.6
         SEVERITY_PARETO_K = 2.5
         SEVERITY_PARETO_LAMBDA = 200_000
     """
-    
+
     def __init__(
         self,
         mu: float = SEVERITY_LOGNORMAL_MU,
@@ -131,17 +135,17 @@ class HeavyTailedSeverityFallback:
         self.pareto_k = float(pareto_k)
         self.pareto_lambda = float(pareto_lambda)
         self.fallback_used = True
-        
+
         # Предвычисляем моменты
         self._expected_repair = self._compute_expected_repair()
         self._expected_downtime = self._compute_expected_downtime()
-    
+
     def _compute_expected_repair(self) -> float:
         """
         E[X] для Lognormal = exp(μ + σ²/2)
         """
-        return float(math.exp(self.mu + 0.5 * self.sigma ** 2))
-    
+        return float(math.exp(self.mu + 0.5 * self.sigma**2))
+
     def _compute_expected_downtime(self) -> float:
         """
         E[X] для Pareto (x > λ) = κ * λ / (κ - 1)
@@ -149,18 +153,18 @@ class HeavyTailedSeverityFallback:
         if self.pareto_k <= 1:
             return float("inf")
         return float(self.pareto_k * self.pareto_lambda / (self.pareto_k - 1))
-    
+
     def expected_loss_per_failure(self) -> float:
         return self._expected_repair + self._expected_downtime
-    
+
     def expected_repair_cost(self) -> float:
         return self._expected_repair
-    
+
     def expected_downtime_cost(self) -> float:
         return self._expected_downtime
-    
+
     def expected_covered_loss(
-        self, deductible: float = 0.0, coverage_limit: Optional[float] = None
+        self, deductible: float = 0.0, coverage_limit: float | None = None
     ) -> float:
         """
         PATCH-02: Точный расчёт E[max(0, X − d)] для Lognormal.
@@ -169,6 +173,7 @@ class HeavyTailedSeverityFallback:
         """
         try:
             from premium_engine import _covered_loss_lognormal
+
             return _covered_loss_lognormal(
                 mu=self.mu,
                 sigma=self.sigma,
@@ -178,6 +183,7 @@ class HeavyTailedSeverityFallback:
         except ImportError:
             # Fallback: аппроксимация с предупреждением
             import warnings
+
             warnings.warn(
                 "HeavyTailedSeverityFallback: точный расчёт недоступен. "
                 "Используется аппроксимация max(0, E[X]−d), "
@@ -203,9 +209,9 @@ class HeavyTailedSeverityFallback:
 # ============================================================================
 def placebo_test_exclusion_restriction(
     model: ModelParameters,
-    weather_data: Optional[pd.DataFrame] = None,
+    weather_data: pd.DataFrame | None = None,
     cabin_failures_only: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Placebo-тест для проверки условия исключения (Exclusion Restriction).
 
@@ -231,7 +237,7 @@ def placebo_test_exclusion_restriction(
             - placebo_pvalue: float — p-value
             - warning: str — предупреждение если тест провален
     """
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "exclusion_valid": True,
         "placebo_coeff": 0.0,
         "placebo_pvalue": 1.0,
@@ -248,8 +254,7 @@ def placebo_test_exclusion_restriction(
                 weather_data = pd.read_csv(weather_path, encoding="utf-8")
             except Exception:
                 result["warning"] = (
-                    "weather_windows.csv не найден или не прочитан. "
-                    "Placebo-тест пропущен."
+                    "weather_windows.csv не найден или не прочитан. Placebo-тест пропущен."
                 )
                 return result
         else:
@@ -268,8 +273,7 @@ def placebo_test_exclusion_restriction(
 
     if z_col is None:
         result["warning"] = (
-            "Столбец с инструментом Z не найден в weather_windows.csv. "
-            "Placebo-тест пропущен."
+            "Столбец с инструментом Z не найден в weather_windows.csv. Placebo-тест пропущен."
         )
         return result
 
@@ -303,8 +307,11 @@ def placebo_test_exclusion_restriction(
     # Фильтруем placebo-отказы (электрика кабины — не должна зависеть от погоды)
     placebo_categories = ["электроника", "electronics", "cabin_electrics", "cabin"]
     if failure_col in weather_data.columns:
-        mask = weather_data[failure_col].astype(str).str.lower().str.contains(
-            "|".join(placebo_categories), na=False
+        mask = (
+            weather_data[failure_col]
+            .astype(str)
+            .str.lower()
+            .str.contains("|".join(placebo_categories), na=False)
         )
         placebo_data = weather_data[mask]
     else:
@@ -340,7 +347,7 @@ def placebo_test_exclusion_restriction(
         "  5. Регрессия: failure_count ~ Z + covariates (Poisson/NB)"
     )
     result["warning"] = warning_msg
-    
+
     # PATCH 4: Усиленное предупреждение через logger.warning
     logger.warning(
         "⚠️ CRITICAL: Exclusion restriction NOT validated. "
@@ -360,7 +367,7 @@ def fit_cause_specific_logistic(
     age_col: str = "x_age",
     hours_col: str = "x_hours",
     major_col: str = "is_major",
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Fit logistic regression: P(major | X) ~ PeakLoad + Age + Hours.
 
     Parameters
@@ -389,9 +396,7 @@ def fit_cause_specific_logistic(
     try:
         from sklearn.linear_model import LogisticRegression
     except ImportError:
-        logger.warning(
-            "sklearn не доступен. Используются priors для cause-specific share."
-        )
+        logger.warning("sklearn не доступен. Используются priors для cause-specific share.")
         return {
             "alpha_logit": math.log(0.3 / 0.7),
             "beta_peak": 0.30,
@@ -403,8 +408,7 @@ def fit_cause_specific_logistic(
     missing = [c for c in cols if c not in data.columns]
     if missing:
         logger.warning(
-            "Недостаточно колонок для fit_cause_specific_logistic: %s. "
-            "Используются priors.",
+            "Недостаточно колонок для fit_cause_specific_logistic: %s. Используются priors.",
             missing,
         )
         return {
@@ -419,8 +423,7 @@ def fit_cause_specific_logistic(
 
     if len(X) < 10:
         logger.warning(
-            "Слишком мало наблюдений (%d) для cause-specific logistic. "
-            "Используются priors.",
+            "Слишком мало наблюдений (%d) для cause-specific logistic. Используются priors.",
             len(X),
         )
         return {
@@ -451,16 +454,18 @@ def fit_cause_specific_logistic(
 
 
 from constants import (
-    MODEL_TIME_UNIT,
-    DEFAULT_ENGINE_HOURS_PER_CALENDAR_DAY,
-    CALIBRATION_HORIZON_DAYS,
-    CALIBRATION_HORIZON_ENGINE_HOURS,
-    MAJOR_FAILURE_SHARE,
-    FREQ_SHARES as _CONSTANTS_FREQ_SHARES,
-    SEVERITY_WEIGHTS,
     BRAND_TO_CODE as CANONICAL_BRAND_INDEX,
     # FIX 1: PEAKLOAD_TUM_TO_DGP_SCALE больше не нужен — PeakLoad в [0,1]
     # SEVERITY_* константы уже импортированы в начале файла
+)
+from constants import (
+    CALIBRATION_HORIZON_ENGINE_HOURS,
+    DEFAULT_ENGINE_HOURS_PER_CALENDAR_DAY,
+    MAJOR_FAILURE_SHARE,
+    MODEL_TIME_UNIT,
+)
+from constants import (
+    FREQ_SHARES as _CONSTANTS_FREQ_SHARES,
 )
 
 # ---------------------------------------------------------------------------
@@ -481,7 +486,7 @@ except ImportError:
     HAS_MODEL_PROVENANCE = False
 
 # P-05: frequency shares from constants.
-FREQ_SHARES: Dict[str, float] = dict(_CONSTANTS_FREQ_SHARES)
+FREQ_SHARES: dict[str, float] = dict(_CONSTANTS_FREQ_SHARES)
 
 
 def check_model_semantic_consistency(model_params: Any) -> None:
@@ -497,8 +502,10 @@ def check_model_semantic_consistency(model_params: Any) -> None:
             "   training_meta:        competing_risks = %s\n"
             "   Используем значение из training_meta (источник истины при обучении).\n"
             "   Рекомендуется переобучить модель с исправленным build_model_artifact().",
-            top_cr, meta_cr,
+            top_cr,
+            meta_cr,
         )
+
 
 PARSE_ERRORS = (ValueError, TypeError)
 RUNTIME_ERRORS = (
@@ -520,7 +527,7 @@ DEFAULT_MODEL_PATH = "model_params.json"
 SEVERITY_MODEL_PATH = "severity_model_v1.json"
 
 
-def _load_severity_model_safe() -> "Optional[SeverityModel]":
+def _load_severity_model_safe() -> SeverityModel | None:
     if HAS_SEVERITY_MODEL:
         path = Path(SEVERITY_MODEL_PATH)
         if path.exists():
@@ -534,7 +541,7 @@ def _load_severity_model_safe() -> "Optional[SeverityModel]":
                 )
             except Exception as exc:
                 logger.warning("Не удалось загрузить severity-модель: %s", exc)
-    
+
     # ★ FIX 4.2: Обязательный fallback — параметрическая модель
     logger.info(
         "Severity-модель не найдена. Используем параметрическую "
@@ -566,7 +573,7 @@ COVERAGE_REPAIR_DOWNTIME_CAPPED = "repair_downtime_capped"
 COVERAGE_FIXED_SUM = "fixed_sum"
 COVERAGE_REPAIR_DOWNTIME_UNCAPPED = "repair_downtime_uncapped"
 
-MTBF_SCENARIOS: Dict[str, Dict[str, Any]] = {
+MTBF_SCENARIOS: dict[str, dict[str, Any]] = {
     "optimistic": {
         "description": "Новая техника, отличное ТО, лёгкие условия",
         "mtbf_all_engine_hours": 3000.0,
@@ -584,7 +591,7 @@ MTBF_SCENARIOS: Dict[str, Dict[str, Any]] = {
     },
 }
 
-FALLBACK_X_STANDARDIZATION: Dict[str, Dict[str, Any]] = {
+FALLBACK_X_STANDARDIZATION: dict[str, dict[str, Any]] = {
     "x_age": {"raw_col": "Age", "shift": 10.0, "scale": 10.0},
     "x_hours": {"raw_col": "Hours", "shift": 1000.0, "scale": 1000.0},
     "x_climate": {"raw_col": "Climate", "shift": None, "scale": None},
@@ -593,7 +600,7 @@ FALLBACK_X_STANDARDIZATION: Dict[str, Dict[str, Any]] = {
     "x_power": {"raw_col": "Power", "shift": 200.0, "scale": 150.0},
 }
 
-REPAIR_COSTS: Dict[str, Dict[str, float]] = {
+REPAIR_COSTS: dict[str, dict[str, float]] = {
     "двигатель": {"base": 170_000.0, "heavy": 350_000.0},
     "трансмиссия": {"base": 110_000.0, "heavy": 375_000.0},
     "гидравлика": {"base": 50_000.0, "heavy": 160_000.0},
@@ -606,7 +613,7 @@ REPAIR_COSTS: Dict[str, Dict[str, float]] = {
 # ============================================================================
 # Gamma(shape, scale) has E[X] = shape * scale, Var[X] = shape * scale^2.
 # CV = sqrt(Var)/E = 1/sqrt(shape).
-REPAIR_SEVERITY_PARAMS: Dict[str, Dict[str, float]] = {
+REPAIR_SEVERITY_PARAMS: dict[str, dict[str, float]] = {
     "двигатель": {"shape": 2.5, "scale": 68000.0, "cv": 0.63},
     "трансмиссия": {"shape": 2.0, "scale": 55000.0, "cv": 0.71},
     "гидравлика": {"shape": 3.0, "scale": 16667.0, "cv": 0.58},
@@ -615,18 +622,18 @@ REPAIR_SEVERITY_PARAMS: Dict[str, Dict[str, float]] = {
 }
 
 
-def gamma_expected_severity(params: Dict[str, float]) -> float:
+def gamma_expected_severity(params: dict[str, float]) -> float:
     """E[X] for Gamma(shape, scale)."""
     shape = float(params.get("shape", 2.0))
     scale = float(params.get("scale", 50000.0))
     return shape * scale
 
 
-def gamma_variance_severity(params: Dict[str, float]) -> float:
+def gamma_variance_severity(params: dict[str, float]) -> float:
     """Var[X] for Gamma(shape, scale)."""
     shape = float(params.get("shape", 2.0))
     scale = float(params.get("scale", 50000.0))
-    return shape * scale ** 2
+    return shape * scale**2
 
 
 def calculate_risk_margin(
@@ -645,19 +652,20 @@ def calculate_risk_margin(
     """
     try:
         from scipy import stats as _scipy_stats
+
         z = _scipy_stats.norm.ppf(confidence_level)
     except ImportError:
         # Fallback: z_0.95 ≈ 1.645
         z = 1.645
 
     loss_variance = (
-        probability * severity_variance
-        + probability * (1.0 - probability) * expected_severity ** 2
+        probability * severity_variance + probability * (1.0 - probability) * expected_severity**2
     )
     loss_variance = max(0.0, loss_variance)  # numerical safety
     return float(z * np.sqrt(loss_variance))
 
-DOWNTIME_STATS: Dict[int, Dict[str, float]] = {
+
+DOWNTIME_STATS: dict[int, dict[str, float]] = {
     1: {"median": 5.0, "p90": 18.0, "mean": 11.5},
     2: {"median": 20.0, "p90": 60.0, "mean": 40.0},
     3: {"median": 45.0, "p90": 180.0, "mean": 45.0},
@@ -671,7 +679,7 @@ DEFAULT_FAILURE_GROUP = 3
 # которую трактор отдаёт при выполнении данной операции. Измеряется в долях единицы
 # (0.0–1.0). Источник: EngPercentLoadAtCurrentSpeed_(%) / 100
 # ---------------------------------------------------------------------------
-OPERATION_INFO: Dict[str, Dict[str, Any]] = {
+OPERATION_INFO: dict[str, dict[str, Any]] = {
     "Ploughing": {
         "operation": "Ploughing",
         "name_ru": "Вспашка",
@@ -812,7 +820,7 @@ OPERATION_INFO: Dict[str, Dict[str, Any]] = {
         "operation": "Transport",
         "name_ru": "Транспорт",
         "description": "Транспортные перевозки по дорогам (базовая нагрузка)",
-        "peak_load_mean": 0.35,  #_baseline_
+        "peak_load_mean": 0.35,  # _baseline_
         "peak_load_std": 0.08,
         "intensity": "низкая",
     },
@@ -835,7 +843,7 @@ def _normalize_operation_name(op_name: str) -> str:
 # ---------------------------------------------------------------------------
 # Фаза X.X: загрузка реальных статистик операций из TUM CAN bus
 # ---------------------------------------------------------------------------
-def load_tum_operations() -> Dict[str, Dict[str, Any]]:
+def load_tum_operations() -> dict[str, dict[str, Any]]:
     """
     Загрузить реальные статистики операций из TUM CAN bus.
 
@@ -851,20 +859,19 @@ def load_tum_operations() -> Dict[str, Dict[str, Any]]:
     stats_path = Path("data/processed/tum/tum_operation_stats.json")
     if not stats_path.exists():
         logger.warning(
-            "Файл статистик TUM не найден: %s. "
-            "Запустите: python analyze_tum_operations.py",
+            "Файл статистик TUM не найден: %s. Запустите: python analyze_tum_operations.py",
             stats_path,
         )
         return {}
 
     try:
-        with open(stats_path, "r", encoding="utf-8") as f:
+        with open(stats_path, encoding="utf-8") as f:
             data = json.load(f)
 
         raw_operations = data.get("operations", {})
 
         # Адаптация имён полей + подключение русского перевода
-        operations: Dict[str, Dict[str, Any]] = {}
+        operations: dict[str, dict[str, Any]] = {}
         for op_name, raw_stats in raw_operations.items():
             # Нормализация имени операции для сопоставления с OPERATION_INFO
             canonical_name = _normalize_operation_name(op_name)
@@ -875,9 +882,7 @@ def load_tum_operations() -> Dict[str, Dict[str, Any]]:
                 "name_ru": info.get("name_ru", op_name),
                 "description_ru": info.get("description", info.get("description_ru", "")),
                 "intensity": info.get("intensity", "неизвестна"),
-                "n_observations": raw_stats.get(
-                    "n", raw_stats.get("n_observations", 0)
-                ),
+                "n_observations": raw_stats.get("n", raw_stats.get("n_observations", 0)),
                 # FIX 1: PeakLoad уже в [0, 1] диапазоне, конвертация не нужна.
                 "peak_load_mean": round(
                     float(raw_stats.get("mean", raw_stats.get("peak_load_mean", 0.0))),
@@ -911,7 +916,7 @@ def load_tum_operations() -> Dict[str, Dict[str, Any]]:
 TUM_OPERATIONS = load_tum_operations()
 
 # Fallback: экспертные сезонные факторы (используются если TUM данные не загружены)
-SEASONAL_FACTORS: Dict[str, float] = {
+SEASONAL_FACTORS: dict[str, float] = {
     "межсезонье": 1.0,
     "подготовка": 1.5,
     "посевная": 3.0,
@@ -922,21 +927,21 @@ SEASONAL_FACTORS: Dict[str, float] = {
 
 BASE_DOWNTIME_COST = 2000.0
 
-REGIONAL_RATES: Dict[str, Tuple[float, float]] = {
+REGIONAL_RATES: dict[str, tuple[float, float]] = {
     "низкозатратный": (800.0, 1300.0),
     "обычный региональный": (1300.0, 2500.0),
     "выездной": (2000.0, 3500.0),
     "Москва/СПб": (3000.0, 5500.0),
     "дилерский/срочный": (5000.0, 8000.0),
 }
-DEFAULT_HEAVY_PROB_BY_GROUP: Dict[int, float] = {1: 0.10, 2: 0.20, 3: 0.35}
+DEFAULT_HEAVY_PROB_BY_GROUP: dict[int, float] = {1: 0.10, 2: 0.20, 3: 0.35}
 DGP_DEFAULT_PATH = "calibration_output/calibrated_dgp.json"
 
 
 # ---------------------------------------------------------------------------
 # Фаза 6.6: загрузка региональных индексов из реальных данных
 # ---------------------------------------------------------------------------
-def load_region_indices() -> Dict[str, Dict[str, float]]:
+def load_region_indices() -> dict[str, dict[str, float]]:
     """
     Загрузить реальные климатические и почвенные индексы по регионам.
 
@@ -945,7 +950,7 @@ def load_region_indices() -> Dict[str, Dict[str, float]]:
     dict
         {region_code: {"climate": float, "soil": float, "working_days": float}}
     """
-    result: Dict[str, Dict[str, float]] = {}
+    result: dict[str, dict[str, float]] = {}
 
     weather_path = Path("data/processed/weather/weather_windows.csv")
     soil_path = Path("data/processed/soil/soil_windows.csv")
@@ -980,7 +985,7 @@ def load_region_indices() -> Dict[str, Dict[str, float]]:
         regions.update(soil_df["region_code"].unique())
 
     for region in sorted(regions):
-        entry: Dict[str, float] = {
+        entry: dict[str, float] = {
             "climate": 0.50,  # Fallback
             "soil": 0.50,  # Fallback
             "working_days": 50.0,  # Fallback
@@ -989,8 +994,7 @@ def load_region_indices() -> Dict[str, Dict[str, float]]:
         # Climate из weather_windows.csv
         if weather_df is not None:
             w_region = weather_df[
-                (weather_df["region_code"] == region)
-                & (weather_df["campaign"] == "sowing")
+                (weather_df["region_code"] == region) & (weather_df["campaign"] == "sowing")
             ]
             if not w_region.empty and "working_days_window" in w_region.columns:
                 working_days = float(w_region["working_days_window"].mean())
@@ -1027,11 +1031,11 @@ class CalculatorConfig:
     """Все параметры калькулятора, собранные от пользователя."""
 
     model_path: str = DEFAULT_MODEL_PATH
-    dgp_data: Optional[Dict[str, Any]] = None
-    peaks: List[float] = field(default_factory=list)
-    extended: Dict[str, Any] = field(default_factory=dict)
-    covariate_values: Dict[str, float] = field(default_factory=dict)
-    raw_covariate_names: Set[str] = field(default_factory=set)
+    dgp_data: dict[str, Any] | None = None
+    peaks: list[float] = field(default_factory=list)
+    extended: dict[str, Any] = field(default_factory=dict)
+    covariate_values: dict[str, float] = field(default_factory=dict)
+    raw_covariate_names: set[str] = field(default_factory=set)
 
     heavy_prob: float = 0.2
     labor_ratio: float = 0.5
@@ -1050,16 +1054,16 @@ class CalculatorConfig:
     claim_amount: float = 0.0
 
     # Severity Model (Phase 7.9)
-    severity_expected_severity: Optional[float] = None
+    severity_expected_severity: float | None = None
     severity_deductible: float = 0.0
-    severity_coverage_limit: Optional[float] = None
+    severity_coverage_limit: float | None = None
     use_severity_pricing: bool = False
-    severity_model: Optional[Any] = None
+    severity_model: Any | None = None
 
     hours_per_day: float = DEFAULT_ENGINE_HOURS_PER_CALENDAR_DAY
-    calib_horizon_value: Optional[float] = None
+    calib_horizon_value: float | None = None
     model_time_unit: str = MODEL_TIME_UNIT
-    training_meta: Dict[str, Any] = field(default_factory=dict)
+    training_meta: dict[str, Any] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -1093,7 +1097,7 @@ def fmt_money(value: Any, default: str = "N/A") -> str:
 # ---------------------------------------------------------------------------
 # Type-safe conversion helpers
 # ---------------------------------------------------------------------------
-def _as_optional_float(value: Any) -> Optional[float]:
+def _as_optional_float(value: Any) -> float | None:
     if value is None:
         return None
     try:
@@ -1115,7 +1119,7 @@ def _as_float(value: Any, name: str) -> float:
     return result
 
 
-def _as_optional_int(value: Any) -> Optional[int]:
+def _as_optional_int(value: Any) -> int | None:
     if value is None:
         return None
     try:
@@ -1150,7 +1154,7 @@ def _as_str(value: Any, default: str) -> str:
     return str(value)
 
 
-def _dict_get_optional_float(mapping: Mapping[str, Any], key: str) -> Optional[float]:
+def _dict_get_optional_float(mapping: Mapping[str, Any], key: str) -> float | None:
     return _as_optional_float(mapping.get(key))
 
 
@@ -1185,7 +1189,7 @@ def _parse_user_float(text: str) -> float:
     return float(txt)
 
 
-def _parse_float_list(raw: str) -> List[float]:
+def _parse_float_list(raw: str) -> list[float]:
     raw = str(raw).strip()
     if not raw:
         return []
@@ -1198,7 +1202,7 @@ def _parse_float_list(raw: str) -> List[float]:
             parts = raw.split(",")
     else:
         parts = raw.split()
-    values: List[float] = []
+    values: list[float] = []
     for part in parts:
         part = str(part).strip()
         if not part:
@@ -1245,7 +1249,7 @@ def ask_str(prompt: str, default: str) -> str:
     return value if value else default
 
 
-def ask_choice(prompt: str, options: List[str], default: str) -> str:
+def ask_choice(prompt: str, options: list[str], default: str) -> str:
     print(prompt)
     for i, opt in enumerate(options, 1):
         print(f"  {i}) {opt}")
@@ -1275,8 +1279,8 @@ def _ask_bounded_float(
     prompt: str,
     default: float,
     *,
-    min_value: Optional[float] = None,
-    max_value: Optional[float] = None,
+    min_value: float | None = None,
+    max_value: float | None = None,
     min_inclusive: bool = True,
     max_inclusive: bool = True,
     error_message: str,
@@ -1384,10 +1388,10 @@ def _ask_positive_horizon(prompt: str, default: float) -> float:
 def _ask_environment_index(
     choice_prompt: str,
     index_prompt: str,
-    options: List[str],
+    options: list[str],
     default_option: str,
-    option_defaults: Dict[str, float],
-) -> Tuple[str, float]:
+    option_defaults: dict[str, float],
+) -> tuple[str, float]:
     chosen_option = ask_choice(choice_prompt, options, default_option)
     default_index = option_defaults.get(chosen_option, 0.0)
     chosen_index = _ask_probability(index_prompt, default_index)
@@ -1396,9 +1400,7 @@ def _ask_environment_index(
 
 def _ask_coverage_mode() -> str:
     print("\nЧто считать выплатой при наступлении страхового события?")
-    print(
-        "  1) Ожидаемый ремонт + простой, ограниченный страховой суммой (рекомендуется)"
-    )
+    print("  1) Ожидаемый ремонт + простой, ограниченный страховой суммой (рекомендуется)")
     print("  2) Фиксированная страховая сумма")
     print("  3) Ожидаемый ремонт + простой без ограничения")
     choice = input("Выбор [1]: ").strip() or "1"
@@ -1421,6 +1423,7 @@ def _ask_major_failure_share(model: ModelParameters) -> float:
     # PATCH: model event_definition is authoritative; incompatible insurance event is blocked.
     try:
         from model_provenance import assert_prediction_event_compatible
+
         training_meta = getattr(model, "training_meta", {}) or {}
         assert_prediction_event_compatible(training_meta, str(choice))
     except ImportError:
@@ -1445,14 +1448,10 @@ def _ask_major_failure_share(model: ModelParameters) -> float:
             "Доля major (крупных) отказов от всех отказов (0.0–1.0, где 1 = все отказы major)",
             MAJOR_FAILURE_SHARE,
         )
-    share = _dict_get_float(
-        MTBF_SCENARIOS[scenario], "major_failure_share", MAJOR_FAILURE_SHARE
-    )
+    share = _dict_get_float(MTBF_SCENARIOS[scenario], "major_failure_share", MAJOR_FAILURE_SHARE)
     if share < 0.0 or share > 1.0:
         raise InvalidInputError(f"major_failure_share must be in [0,1], got {share}")
-    logger.info(
-        "Используется major_failure_share=%.3f из сценария '%s'.", share, scenario
-    )
+    logger.info("Используется major_failure_share=%.3f из сценария '%s'.", share, scenario)
     return share
 
 
@@ -1487,9 +1486,9 @@ def _engine_hours_to_calendar_days(engine_hours: float, hours_per_day: float) ->
 # ---------------------------------------------------------------------------
 # DGP calibration loading
 # ---------------------------------------------------------------------------
-def load_dgp_calibration(path: str = DGP_DEFAULT_PATH) -> Optional[Dict[str, Any]]:
+def load_dgp_calibration(path: str = DGP_DEFAULT_PATH) -> dict[str, Any] | None:
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, dict):
             logger.error("[DGP] Файл %s не содержит JSON-объект.", path)
@@ -1511,16 +1510,14 @@ def load_dgp_calibration(path: str = DGP_DEFAULT_PATH) -> Optional[Dict[str, Any
         return None
 
 
-def load_dgp_with_fallback(user_path: str = "") -> Optional[Dict[str, Any]]:
-    candidates: List[str] = []
+def load_dgp_with_fallback(user_path: str = "") -> dict[str, Any] | None:
+    candidates: list[str] = []
     if user_path:
         candidates.append(user_path)
     candidates.append(DGP_DEFAULT_PATH)
-    fallback = (
-        Path(DEFAULT_MODEL_PATH).parent / "calibration_output" / "calibrated_dgp.json"
-    )
+    fallback = Path(DEFAULT_MODEL_PATH).parent / "calibration_output" / "calibrated_dgp.json"
     candidates.append(str(fallback))
-    seen: Set[str] = set()
+    seen: set[str] = set()
     for candidate in candidates:
         if not candidate:
             continue
@@ -1539,9 +1536,7 @@ def load_dgp_with_fallback(user_path: str = "") -> Optional[Dict[str, Any]]:
         data = load_dgp_calibration(str(path))
         if data is not None:
             return data
-    logger.info(
-        "[DGP] Калибровка DGP не найдена или не загружена. DGP не будет использоваться."
-    )
+    logger.info("[DGP] Калибровка DGP не найдена или не загружена. DGP не будет использоваться.")
     return None
 
 
@@ -1563,10 +1558,10 @@ def _canonical_brand_key(brand_name: str) -> str:
 
 
 def _get_brand_index(
-    model: ModelParameters, dgp_data: Optional[Dict[str, Any]], brand_name: str
+    model: ModelParameters, dgp_data: dict[str, Any] | None, brand_name: str
 ) -> float:
     brand_name = _as_str(brand_name, "")
-    mappings: List[Dict[str, Any]] = []
+    mappings: list[dict[str, Any]] = []
     meta = getattr(model, "training_meta", {}) or {}
     if isinstance(meta, dict):
         if isinstance(meta.get("brand_mapping"), dict):
@@ -1580,7 +1575,7 @@ def _get_brand_index(
             mapped = _as_optional_float(mapping.get(brand_name))
             if mapped is not None:
                 return float(mapped)
-        normalized: Dict[str, Any] = {}
+        normalized: dict[str, Any] = {}
         for k, v in mapping.items():
             normalized[str(k).strip().lower()] = v
         if brand_lower in normalized:
@@ -1596,12 +1591,10 @@ def _get_brand_index(
             CANONICAL_BRAND_INDEX[key],
         )
         return float(CANONICAL_BRAND_INDEX[key])
-    raise InvalidInputError(
-        f"Brand '{brand_name}' cannot be mapped to numeric Brand index."
-    )
+    raise InvalidInputError(f"Brand '{brand_name}' cannot be mapped to numeric Brand index.")
 
 
-def _brand_dummy_key(name: str) -> Optional[str]:
+def _brand_dummy_key(name: str) -> str | None:
     n = str(name).strip().lower()
     n_compact = re.sub(r"[^a-z0-9а-яё]", "", n)
     if "brand" not in n_compact and "бренд" not in n_compact:
@@ -1622,8 +1615,8 @@ def _brand_dummy_key(name: str) -> Optional[str]:
 # ---------------------------------------------------------------------------
 # Extended parameters
 # ---------------------------------------------------------------------------
-def collect_extended_parameters() -> Dict[str, Any]:
-    params: Dict[str, Any] = {}
+def collect_extended_parameters() -> dict[str, Any]:
+    params: dict[str, Any] = {}
     brand_options = [
         "New Holland T9.505",
         "New Holland T9.615",
@@ -1727,7 +1720,7 @@ def collect_extended_parameters() -> Dict[str, Any]:
             print(
                 f"  {i:2d}) {name_ru:30s} ({op}) "
                 f"PeakLoad={pl_mean:.2f}±{pl_std:.2f} {intensity_str}\n"
-                f"      TUM: {pl_mean_raw*100:.1f}% ± {pl_std_raw*100:.1f}%, "
+                f"      TUM: {pl_mean_raw * 100:.1f}% ± {pl_std_raw * 100:.1f}%, "
                 f"SF={sf:.2f}, n={n_obs:,}"
             )
         # Выбираем по номеру (дублирования нет — ask_choice уже был убран)
@@ -1754,16 +1747,12 @@ def collect_extended_parameters() -> Dict[str, Any]:
     else:
         print("⚠️  Реальные данные TUM не загружены. Обобщённый режим.")
         season_options = list(SEASONAL_FACTORS.keys())
-        season = ask_choice(
-            "Выберите сезон/период работ:", season_options, season_options[0]
-        )
+        season = ask_choice("Выберите сезон/период работ:", season_options, season_options[0])
         params["season"] = season
         params["downtime_hour_cost"] = BASE_DOWNTIME_COST * SEASONAL_FACTORS[season]
 
     region_options = list(REGIONAL_RATES.keys())
-    region = ask_choice(
-        "Выберите тип региона для нормо-часа:", region_options, region_options[1]
-    )
+    region = ask_choice("Выберите тип региона для нормо-часа:", region_options, region_options[1])
     low, high = REGIONAL_RATES[region]
     params["region"] = region
     regional_rate = _ask_non_negative(
@@ -1773,27 +1762,21 @@ def collect_extended_parameters() -> Dict[str, Any]:
     params["regional_rate"] = regional_rate
 
     use_standard = (
-        ask_str("Использовать стандартные доли отказов по системам? [да]", "да")
-        .strip()
-        .lower()
+        ask_str("Использовать стандартные доли отказов по системам? [да]", "да").strip().lower()
     )
     if use_standard in ("да", "д", "yes", "y", ""):
         params["failure_shares"] = copy.deepcopy(FREQ_SHARES)
     else:
-        shares: Dict[str, float] = {}
+        shares: dict[str, float] = {}
         for system, default_share in FREQ_SHARES.items():
-            shares[system] = _ask_probability(
-                f"Доля отказов для {system} (0-1)", default_share
-            )
+            shares[system] = _ask_probability(f"Доля отказов для {system} (0-1)", default_share)
         params["failure_shares"] = shares
 
-    use_base_repair = (
-        ask_str("Использовать базовые стоимости ремонта? [да]", "да").strip().lower()
-    )
+    use_base_repair = ask_str("Использовать базовые стоимости ремонта? [да]", "да").strip().lower()
     if use_base_repair in ("да", "д", "yes", "y", ""):
         params["repair_costs"] = copy.deepcopy(REPAIR_COSTS)
     else:
-        costs: Dict[str, Dict[str, float]] = {}
+        costs: dict[str, dict[str, float]] = {}
         for system in REPAIR_COSTS.keys():
             base = _ask_non_negative(
                 f"Базовая стоимость ремонта для {system} (руб.)",
@@ -1815,7 +1798,7 @@ def collect_extended_parameters() -> Dict[str, Any]:
     return params
 
 
-def _default_heavy_probability(extended: Dict[str, Any]) -> float:
+def _default_heavy_probability(extended: dict[str, Any]) -> float:
     group = _as_int(
         extended.get("failure_group"),
         name="failure_group",
@@ -1832,24 +1815,22 @@ def _default_heavy_probability(extended: Dict[str, Any]) -> float:
     return float(max(0.02, min(0.90, value)))
 
 
-def _ask_heavy_probability(extended: Dict[str, Any]) -> float:
+def _ask_heavy_probability(extended: dict[str, Any]) -> float:
     default_value = _default_heavy_probability(extended)
-    return _ask_probability(
-        "Вероятность тяжёлого сценария ремонта (0.0-1.0)", default_value
-    )
+    return _ask_probability("Вероятность тяжёлого сценария ремонта (0.0-1.0)", default_value)
 
 
 # ---------------------------------------------------------------------------
 # Economic helpers
 # ---------------------------------------------------------------------------
 def compute_expected_repair_cost(
-    shares: Dict[str, float],
-    costs: Dict[str, Dict[str, float]],
+    shares: dict[str, float],
+    costs: dict[str, dict[str, float]],
     heavy_prob: float = 0.2,
 ) -> float:
     heavy_prob_f = _as_float(heavy_prob, "heavy_prob")
     heavy_prob_f = max(0.0, min(1.0, heavy_prob_f))
-    clean_shares: Dict[str, float] = {}
+    clean_shares: dict[str, float] = {}
     for system, share in shares.items():
         share_f = _as_float(share, f"Failure share for '{system}'")
         if share_f < 0.0:
@@ -1860,9 +1841,7 @@ def compute_expected_repair_cost(
     if total_share <= 0.0:
         return 0.0
     if abs(total_share - 1.0) > 1e-6:
-        logger.warning(
-            "Доли отказов суммируются в %.6f. Они будут нормализованы.", total_share
-        )
+        logger.warning("Доли отказов суммируются в %.6f. Они будут нормализованы.", total_share)
     total = 0.0
     for system, share in clean_shares.items():
         if system not in costs:
@@ -1872,9 +1851,7 @@ def compute_expected_repair_cost(
         heavy_cost = _dict_get_float(cost, "heavy", 0.0)
         if base_cost < 0.0 or heavy_cost < 0.0:
             raise InvalidInputError(f"Repair cost for '{system}' cannot be negative")
-        expected_system_cost = (
-            1.0 - heavy_prob_f
-        ) * base_cost + heavy_prob_f * heavy_cost
+        expected_system_cost = (1.0 - heavy_prob_f) * base_cost + heavy_prob_f * heavy_cost
         weight = share / total_share
         total += weight * expected_system_cost
     return float(total)
@@ -1921,9 +1898,7 @@ def apply_hazard_multiplier(probability: float, factor: float) -> float:
 def compute_claim_amount(
     coverage_mode: str, expected_loss_per_failure: float, sum_insured: float
 ) -> float:
-    expected_loss_per_failure = _as_float(
-        expected_loss_per_failure, "expected loss per failure"
-    )
+    expected_loss_per_failure = _as_float(expected_loss_per_failure, "expected loss per failure")
     sum_insured = _as_float(sum_insured, "sum insured")
     if sum_insured <= 0.0:
         raise InvalidInputError("Sum insured must be positive")
@@ -1940,7 +1915,7 @@ def compute_claim_amount(
 # ---------------------------------------------------------------------------
 # PeakLoad selection
 # ---------------------------------------------------------------------------
-def get_peakload_choice(model: ModelParameters) -> List[float]:
+def get_peakload_choice(model: ModelParameters) -> list[float]:
     meta = getattr(model, "training_meta", {}) or {}
     if not isinstance(meta, dict):
         meta = {}
@@ -1948,11 +1923,9 @@ def get_peakload_choice(model: ModelParameters) -> List[float]:
     p50 = _dict_get_optional_float(meta, "peakload_median")
     p75 = _dict_get_optional_float(meta, "peakload_p75")
 
-    def _manual_input() -> List[float]:
+    def _manual_input() -> list[float]:
         while True:
-            raw = input(
-                "Введите одно или несколько значений PeakLoad через точку с запятой (;): "
-            )
+            raw = input("Введите одно или несколько значений PeakLoad через точку с запятой (;): ")
             try:
                 values = _parse_float_list(raw)
                 if values:
@@ -1987,20 +1960,20 @@ def get_peakload_choice(model: ModelParameters) -> List[float]:
 # ---------------------------------------------------------------------------
 # Model covariates
 # ---------------------------------------------------------------------------
-def _get_cf_meta(params: ModelParameters) -> Dict[str, Any]:
+def _get_cf_meta(params: ModelParameters) -> dict[str, Any]:
     meta = getattr(params, "cf_basis_metadata", None)
     if isinstance(meta, dict):
         return meta
     return {}
 
 
-def _get_cf_columns(params: ModelParameters) -> Set[str]:
+def _get_cf_columns(params: ModelParameters) -> set[str]:
     meta = _get_cf_meta(params)
     cols = meta.get("v_hat_cols", []) or []
     return {str(c) for c in cols}
 
 
-def _is_cf_column(name: str, cf_cols: Set[str]) -> bool:
+def _is_cf_column(name: str, cf_cols: set[str]) -> bool:
     name_str = str(name)
     name_lower = name_str.lower()
     cf_cols_lower = {str(c).lower() for c in cf_cols}
@@ -2013,7 +1986,7 @@ def _is_cf_column(name: str, cf_cols: Set[str]) -> bool:
     return False
 
 
-def _get_x_standardization(params: ModelParameters) -> Dict[str, Dict[str, Any]]:
+def _get_x_standardization(params: ModelParameters) -> dict[str, dict[str, Any]]:
     meta = getattr(params, "training_meta", {}) or {}
     if not isinstance(meta, dict):
         return {}
@@ -2023,7 +1996,7 @@ def _get_x_standardization(params: ModelParameters) -> Dict[str, Dict[str, Any]]
     return x_std
 
 
-def _get_standardization_info(params: ModelParameters, name: str) -> Dict[str, Any]:
+def _get_standardization_info(params: ModelParameters, name: str) -> dict[str, Any]:
     x_std = _get_x_standardization(params)
     info = x_std.get(name)
     if isinstance(info, dict):
@@ -2089,9 +2062,9 @@ def _compute_age_hours_interaction(
 
 def collect_model_covariates(
     model: ModelParameters,
-    extended: Optional[Dict[str, Any]] = None,
-    dgp_data: Optional[Dict[str, Any]] = None,
-) -> Tuple[Dict[str, float], Set[str]]:
+    extended: dict[str, Any] | None = None,
+    dgp_data: dict[str, Any] | None = None,
+) -> tuple[dict[str, float], set[str]]:
     first_stage = getattr(model, "first_stage", {}) or {}
     if not isinstance(first_stage, dict):
         first_stage = {}
@@ -2103,7 +2076,7 @@ def collect_model_covariates(
     all_names = set(fs_names + cox_names)
     exclude = {"const", "intercept", "peakload", "peak_load", "z", "x"}
     cf_cols = _get_cf_columns(model)
-    cov_names: List[str] = []
+    cov_names: list[str] = []
     for name in all_names:
         name_str = str(name)
         if name_str.lower() in exclude:
@@ -2114,8 +2087,8 @@ def collect_model_covariates(
     cov_names = sorted(cov_names)
     if not cov_names:
         return {}, set()
-    cov_values: Dict[str, float] = {}
-    raw_covariate_names: Set[str] = set()
+    cov_values: dict[str, float] = {}
+    raw_covariate_names: set[str] = set()
     template = getattr(model, "template_covariates", {}) or {}
     if not isinstance(template, dict):
         template = {}
@@ -2130,7 +2103,7 @@ def collect_model_covariates(
     brand_code_value = CANONICAL_BRAND_INDEX.get(brand_key)
     if brand_code_value is not None:
         cov_values["Brand"] = float(brand_code_value)
-    ext_to_model_variants: Dict[str, List[str]] = {
+    ext_to_model_variants: dict[str, list[str]] = {
         "age_years": ["x_age", "Age", "age"],
         "hours": ["x_hours", "Hours", "hours"],
         "age_hours": ["x_age_hours", "Age_x_Hours", "age_hours"],  # ← ДОБАВЛЕНО
@@ -2149,13 +2122,9 @@ def collect_model_covariates(
             if model_name in cov_values:
                 continue
             resolved_value = raw_value
-            if model_name.lower() in {"brand", "x_brand"} and isinstance(
-                raw_value, str
-            ):
+            if model_name.lower() in {"brand", "x_brand"} and isinstance(raw_value, str):
                 resolved_value = _get_brand_index(model, dgp_data, raw_value)
-            cov_values[model_name] = _as_float(
-                resolved_value, f"Model covariate '{model_name}'"
-            )
+            cov_values[model_name] = _as_float(resolved_value, f"Model covariate '{model_name}'")
             raw_covariate_names.add(model_name)
     # ─── Автоматическое вычисление interaction Age × Hours ─────────────
     # x_age_hours — производная величина, у пользователя НЕ спрашивается.
@@ -2206,7 +2175,7 @@ def collect_model_covariates(
 # Params preparation and engine validation
 # ---------------------------------------------------------------------------
 def prepare_params_for_prediction(
-    params: ModelParameters, covariate_values: Dict[str, float]
+    params: ModelParameters, covariate_values: dict[str, float]
 ) -> ModelParameters:
     params_copy = copy.deepcopy(params)
     template = getattr(params_copy, "template_covariates", None)
@@ -2215,9 +2184,7 @@ def prepare_params_for_prediction(
     if not isinstance(params_copy.template_covariates, dict):
         params_copy.template_covariates = {}
     for name, val in (covariate_values or {}).items():
-        params_copy.template_covariates[str(name)] = _as_float(
-            val, f"Covariate '{name}'"
-        )
+        params_copy.template_covariates[str(name)] = _as_float(val, f"Covariate '{name}'")
     return params_copy
 
 
@@ -2234,7 +2201,7 @@ def validate_probability_with_engine(
     params: ModelParameters,
     peak_raw: float,
     time_horizon: float,
-    covariate_values: Dict[str, float],
+    covariate_values: dict[str, float],
     residual_policy: str = DEFAULT_RESIDUAL_POLICY,
     time_horizon_unit: str = MODEL_TIME_UNIT,
 ) -> float:
@@ -2292,22 +2259,16 @@ def _parse_power_from_name(name: str, default_power: int) -> int:
     return max(1, int(default_power))
 
 
-def _manual_powers_basis(
-    params: ModelParameters, raw_residual: float
-) -> Dict[str, np.ndarray]:
+def _manual_powers_basis(params: ModelParameters, raw_residual: float) -> dict[str, np.ndarray]:
     meta = _get_cf_meta(params)
     residuals_mean = _dict_get_optional_float(meta, "residuals_mean")
     if residuals_mean is None:
-        residuals_mean = _as_optional_float(
-            getattr(params, "training_residuals_mean", 0.0)
-        )
+        residuals_mean = _as_optional_float(getattr(params, "training_residuals_mean", 0.0))
     if residuals_mean is None:
         residuals_mean = 0.0
     residuals_std = _dict_get_optional_float(meta, "residuals_std")
     if residuals_std is None:
-        residuals_std = _as_optional_float(
-            getattr(params, "training_residuals_std", 1.0)
-        )
+        residuals_std = _as_optional_float(getattr(params, "training_residuals_std", 1.0))
     if residuals_std is None or residuals_std <= 0.0:
         residuals_std = 1.0
     v_std = (float(raw_residual) - residuals_mean) / residuals_std
@@ -2321,7 +2282,7 @@ def _manual_powers_basis(
     col_std_params = meta.get("v_hat_col_std_params", {}) or {}
     if not isinstance(col_std_params, dict):
         col_std_params = {}
-    result: Dict[str, np.ndarray] = {}
+    result: dict[str, np.ndarray] = {}
     for idx, col_name in enumerate(cf_cols):
         power = _parse_power_from_name(col_name, idx + 1)
         basis_value = v_std**power
@@ -2379,19 +2340,17 @@ def compute_full_details(
     params: ModelParameters,
     peak_raw: float,
     time_horizon: float,
-    covariate_values: Dict[str, float],
-    raw_covariate_names: Optional[Set[str]] = None,
+    covariate_values: dict[str, float],
+    raw_covariate_names: set[str] | None = None,
     residual_policy: str = DEFAULT_RESIDUAL_POLICY,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     residual_policy = str(residual_policy).lower()
     if residual_policy not in SUPPORTED_RESIDUAL_POLICIES:
         raise InvalidInputError(f"Unsupported residual policy: '{residual_policy}'.")
     peak_raw = _as_float(peak_raw, "PeakLoad")
     time_horizon = _as_float(time_horizon, "time horizon")
     if time_horizon <= 0.0:
-        raise InvalidInputError(
-            "Горизонт прогнозирования должен быть положительным числом."
-        )
+        raise InvalidInputError("Горизонт прогнозирования должен быть положительным числом.")
     _validate_peak_range(params, peak_raw)
     original_template = getattr(params, "template_covariates", {}) or {}
     if not isinstance(original_template, dict):
@@ -2417,7 +2376,7 @@ def compute_full_details(
     if pl_hat_arr.size == 0:
         raise PredictionError("predict_first_stage вернул пустой результат.")
     pl_hat = _as_float(pl_hat_arr[0], "predict_first_stage result")
-    pl_hat_exog_raw: Optional[float] = None
+    pl_hat_exog_raw: float | None = None
     try:
         pl_hat_exog_arr = np.asarray(compute_pl_hat_exog(params_copy, pl_hat)).ravel()
         if pl_hat_exog_arr.size > 0:
@@ -2430,25 +2389,19 @@ def compute_full_details(
         pl_hat_exog_raw = None
     if pl_hat_exog_raw is None:
         if use_pl_hat_exog_for_peakload:
-            raise PredictionError(
-                "PL_hat_exog is required but unavailable or non-finite."
-            )
+            raise PredictionError("PL_hat_exog is required but unavailable or non-finite.")
         pl_hat_exog = float(pl_hat)
     else:
         pl_hat_exog = float(pl_hat_exog_raw)
     cf_meta = _get_cf_meta(params_copy)
     residuals_mean = _dict_get_optional_float(cf_meta, "residuals_mean")
     if residuals_mean is None:
-        residuals_mean = _as_optional_float(
-            getattr(params_copy, "training_residuals_mean", 0.0)
-        )
+        residuals_mean = _as_optional_float(getattr(params_copy, "training_residuals_mean", 0.0))
     if residuals_mean is None:
         residuals_mean = 0.0
     residuals_std = _dict_get_optional_float(cf_meta, "residuals_std")
     if residuals_std is None:
-        residuals_std = _as_optional_float(
-            getattr(params_copy, "training_residuals_std", 1.0)
-        )
+        residuals_std = _as_optional_float(getattr(params_copy, "training_residuals_std", 1.0))
     if residuals_std is None or residuals_std <= 0.0:
         residuals_std = 1.0
     if residual_policy == "plug-in":
@@ -2460,7 +2413,7 @@ def compute_full_details(
     else:
         raise InvalidInputError(f"Unsupported residual policy: '{residual_policy}'")
     if not math.isfinite(raw_residual):
-        raise PredictionError(f"Non-finite CF residual.")
+        raise PredictionError("Non-finite CF residual.")
     standardized_residual_check = (raw_residual - residuals_mean) / residuals_std
     if not math.isfinite(standardized_residual_check):
         raise PredictionError("Non-finite standardized residual")
@@ -2479,9 +2432,7 @@ def compute_full_details(
     if "linear_standardized" in cf_meta:
         linear_standardized = bool(cf_meta.get("linear_standardized", True))
     else:
-        linear_standardized = not any(
-            str(c).lower().startswith("eps_d_hat") for c in cf_cols
-        )
+        linear_standardized = not any(str(c).lower().startswith("eps_d_hat") for c in cf_cols)
     if linear_standardized:
         v_hat = (raw_residual - residuals_mean) / residuals_std
     else:
@@ -2489,7 +2440,7 @@ def compute_full_details(
     if not math.isfinite(v_hat):
         raise PredictionError("Non-finite v_hat")
     basis_type = str(cf_meta.get("v_hat_basis", "linear")).lower()
-    cf_basis_values: Dict[str, np.ndarray] = {}
+    cf_basis_values: dict[str, np.ndarray] = {}
     if basis_type in {"spline", "powers"}:
         residuals_arr = np.array([raw_residual], dtype=float)
         if _BUILD_CF_BASIS_AT_PREDICTION is not None:
@@ -2517,7 +2468,7 @@ def compute_full_details(
                 )
     else:
         cf_basis_by_lower = {}
-    manual_covariates: Dict[str, float] = {}
+    manual_covariates: dict[str, float] = {}
     for name, value in original_template.items():
         name_str = str(name)
         covariate_value = _as_optional_float(value)
@@ -2559,8 +2510,8 @@ def compute_full_details(
         cox_coefs = {}
     lp = 0.0
     gamma = float("nan")
-    peakload_coef_name: Optional[str] = None
-    missing_covariates: List[str] = []
+    peakload_coef_name: str | None = None
+    missing_covariates: list[str] = []
     for raw_name in cox_names:
         name = str(raw_name)
         name_lower = name.lower()
@@ -2601,18 +2552,12 @@ def compute_full_details(
                     break
         coef = _as_optional_float(coef_raw)
         if coef is None:
-            raise PredictionError(
-                f"Missing or invalid Cox coefficient for term '{name}'"
-            )
+            raise PredictionError(f"Missing or invalid Cox coefficient for term '{name}'")
         lp += coef * term_value
     if missing_covariates:
-        raise PredictionError(
-            "Missing Cox covariates: " + ", ".join(missing_covariates)
-        )
+        raise PredictionError("Missing Cox covariates: " + ", ".join(missing_covariates))
     if not math.isfinite(lp):
-        raise PredictionError(
-            "Линейный предиктор Cox-модели не является конечным числом."
-        )
+        raise PredictionError("Линейный предиктор Cox-модели не является конечным числом.")
     if peakload_coef_name is not None:
         gamma_val = _as_optional_float(cox_coefs.get(peakload_coef_name))
         if gamma_val is not None:
@@ -2620,9 +2565,7 @@ def compute_full_details(
     try:
         h0_raw = baseline_cumulative_hazard(params_copy, time_horizon)
     except RUNTIME_ERRORS as exc:
-        raise PredictionError(
-            f"Ошибка расчёта baseline_cumulative_hazard: {exc}"
-        ) from exc
+        raise PredictionError(f"Ошибка расчёта baseline_cumulative_hazard: {exc}") from exc
     h0_arr = np.asarray(h0_raw).ravel()
     if h0_arr.size == 0:
         raise PredictionError("baseline_cumulative_hazard вернул пустой результат.")
@@ -2632,12 +2575,8 @@ def compute_full_details(
             h0 = 0.0
         else:
             raise PredictionError(f"Negative baseline cumulative hazard: {h0}")
-    h0 = _clip_with_warning(
-        h0, 0.0, MAX_CUMULATIVE_HAZARD, "Baseline cumulative hazard H0(t)"
-    )
-    clipped_lp = _clip_with_warning(
-        lp, MIN_EXP_ARG, MAX_EXP_ARG, "Cox linear predictor lp"
-    )
+    h0 = _clip_with_warning(h0, 0.0, MAX_CUMULATIVE_HAZARD, "Baseline cumulative hazard H0(t)")
+    clipped_lp = _clip_with_warning(lp, MIN_EXP_ARG, MAX_EXP_ARG, "Cox linear predictor lp")
     hazard_ratio = math.exp(clipped_lp)
     if not math.isfinite(hazard_ratio):
         raise PredictionError("Hazard ratio is not finite")
@@ -2674,8 +2613,7 @@ def compute_full_details(
     except RUNTIME_ERRORS as _exc:
         # Fallback на ручной расчёт если engine не справился
         logger.warning(
-            "prediction_engine.predict_probability() не справился: %s. "
-            "Используем ручной расчёт.",
+            "prediction_engine.predict_probability() не справился: %s. Используем ручной расчёт.",
             _exc,
         )
         engine_probability = None
@@ -2689,9 +2627,10 @@ def compute_full_details(
         prob_diff = abs(probability - manual_prob)
         if prob_diff > 1e-6:
             logger.warning(
-                "Расхождение probability: engine=%.6f, manual=%.6f, diff=%.2e. "
-                "Используем engine.",
-                probability, manual_prob, prob_diff,
+                "Расхождение probability: engine=%.6f, manual=%.6f, diff=%.2e. Используем engine.",
+                probability,
+                manual_prob,
+                prob_diff,
             )
     else:
         # Fallback
@@ -2730,7 +2669,7 @@ def compute_full_details(
 # ---------------------------------------------------------------------------
 def load_and_validate_model(
     model_path: str,
-) -> Tuple[ModelParameters, Dict[str, Any], Optional[Dict[str, Any]]]:
+) -> tuple[ModelParameters, dict[str, Any], dict[str, Any] | None]:
     try:
         params = load_model_params(model_path)
     except RUNTIME_ERRORS as e:
@@ -2744,10 +2683,16 @@ def load_and_validate_model(
     if HAS_MODEL_PROVENANCE:
         try:
             trained_campaign = get_model_weather_campaign(
-                {"training_meta": getattr(params, "training_meta", {}) or {}, "metadata": getattr(params, "metadata", {})}
+                {
+                    "training_meta": getattr(params, "training_meta", {}) or {},
+                    "metadata": getattr(params, "metadata", {}),
+                }
             )
             assert_prediction_campaign(
-                {"training_meta": getattr(params, "training_meta", {}) or {}, "metadata": getattr(params, "metadata", {})},
+                {
+                    "training_meta": getattr(params, "training_meta", {}) or {},
+                    "metadata": getattr(params, "metadata", {}),
+                },
                 trained_campaign,
             )
             print(f"Environmental campaign модели: {trained_campaign}")
@@ -2782,14 +2727,8 @@ def load_and_validate_model(
         logger.warning(
             "Модель обучена в stress-test режиме (загрязнённые данные / contamination=True)."
         )
-        logger.warning(
-            "Результаты НЕ должны использоваться для продуктового ценообразования."
-        )
-        answer = (
-            ask_str("Продолжить расчёт, несмотря на stress-test? [нет]", "нет")
-            .strip()
-            .lower()
-        )
+        logger.warning("Результаты НЕ должны использоваться для продуктового ценообразования.")
+        answer = ask_str("Продолжить расчёт, несмотря на stress-test? [нет]", "нет").strip().lower()
         if answer not in {"да", "д", "yes", "y"}:
             logger.info("Расчёт прерван пользователем.")
             raise SystemExit(2)
@@ -2851,8 +2790,8 @@ def load_and_validate_model(
 
 def collect_user_inputs(
     params: ModelParameters,
-    training_meta: Dict[str, Any],
-    dgp_data: Optional[Dict[str, Any]],
+    training_meta: dict[str, Any],
+    dgp_data: dict[str, Any] | None,
 ) -> CalculatorConfig:
     cfg = CalculatorConfig()
     cfg.training_meta = training_meta
@@ -2894,10 +2833,8 @@ def collect_user_inputs(
     if selected_region:
         print(f"\n  Регион:                {selected_region} (из реальных данных)")
     else:
-        print(f"\n  Регион:                ручной ввод")
-    print(
-        f"  x_climate:             {cfg.covariate_values.get('x_climate', 'N/A'):.4f}"
-    )
+        print("\n  Регион:                ручной ввод")
+    print(f"  x_climate:             {cfg.covariate_values.get('x_climate', 'N/A'):.4f}")
     print(f"  x_soil:                {cfg.covariate_values.get('x_soil', 'N/A'):.4f}")
 
     cfg.sum_insured = _ask_sum_insured(
@@ -2907,13 +2844,9 @@ def collect_user_inputs(
     horizon_default = DEFAULT_HORIZON_ENGINE_HOURS
     if cfg.calib_horizon_value is not None:
         horizon_default = float(cfg.calib_horizon_value)
-    cfg.horizon = _ask_positive_horizon(
-        "Горизонт прогнозирования (мото-часы)", horizon_default
-    )
+    cfg.horizon = _ask_positive_horizon("Горизонт прогнозирования (мото-часы)", horizon_default)
 
-    cfg.theta = _ask_theta(
-        "Страховая нагрузка (доля, например 0.15 = 15%)", DEFAULT_THETA
-    )
+    cfg.theta = _ask_theta("Страховая нагрузка (доля, например 0.15 = 15%)", DEFAULT_THETA)
     cfg.discount_rate = _ask_discount_rate(
         "Годовая ставка дисконтирования (например 0.10 = 10%, 0 = без дисконтирования)",
         DEFAULT_DISCOUNT_RATE,
@@ -2986,18 +2919,14 @@ def collect_user_inputs(
         cfg.severity_expected_severity = cfg.expected_loss_per_failure
         cfg.severity_deductible = 0.0
         cfg.severity_coverage_limit = (
-            cfg.sum_insured
-            if cfg.coverage_mode == COVERAGE_REPAIR_DOWNTIME_CAPPED
-            else None
+            cfg.sum_insured if cfg.coverage_mode == COVERAGE_REPAIR_DOWNTIME_CAPPED else None
         )
         cfg.claim_amount = cfg.sum_insured
         logger.info(
             "Используется severity-based расчёт: E[covered loss] = %s руб., deductible = %s, limit = %s",
             fmt_money(cfg.severity_expected_severity),
             fmt_money(cfg.severity_deductible),
-            fmt_money(cfg.severity_coverage_limit)
-            if cfg.severity_coverage_limit
-            else "нет",
+            fmt_money(cfg.severity_coverage_limit) if cfg.severity_coverage_limit else "нет",
         )
     else:
         try:
@@ -3023,9 +2952,7 @@ def collect_user_inputs(
         print(
             f"Стоимость простоя (на один отказ, mean {downtime_hours:.1f} ч): {fmt_money(cfg.downtime_cost_per_failure)} руб."
         )
-    print(
-        f"Ожидаемый убыток на один отказ: {fmt_money(cfg.expected_loss_per_failure)} руб."
-    )
+    print(f"Ожидаемый убыток на один отказ: {fmt_money(cfg.expected_loss_per_failure)} руб.")
     if cfg.use_severity_pricing:
         print(
             f"Сумма выплаты для премии (режим '{cfg.coverage_mode}'): "
@@ -3040,9 +2967,7 @@ def collect_user_inputs(
     return cfg
 
 
-def compute_all_peaks(
-    params: ModelParameters, cfg: CalculatorConfig
-) -> List[Dict[str, Any]]:
+def compute_all_peaks(params: ModelParameters, cfg: CalculatorConfig) -> list[dict[str, Any]]:
     """Compute failure probabilities for multiple PeakLoad values.
 
     WARNING: Exclusion Restriction Assumption
@@ -3077,8 +3002,8 @@ def compute_all_peaks(
             "⚠️ Exclusion restriction НЕ проверена. "
             "Результаты имеют предсказательный, а не каузальный характер."
         )
-    
-    results: List[Dict[str, Any]] = []
+
+    results: list[dict[str, Any]] = []
 
     # ★ НОВОЕ: Если выбрана конкретная операция — добавить её PeakLoad
     peaks_to_compute = list(cfg.peaks)
@@ -3122,27 +3047,17 @@ def compute_all_peaks(
             logger.error("Ошибка расчёта для PeakLoad=%s: %s", fmt_num(peak), e)
             continue
 
-        print(
-            f"\nPeakLoad (исходное):             {fmt_num(details['peak_raw'], '.4f')}"
-        )
-        print(
-            f"PeakLoad (трансформированное):   {fmt_num(details['peak_transformed'], '.4f')}"
-        )
+        print(f"\nPeakLoad (исходное):             {fmt_num(details['peak_raw'], '.4f')}")
+        print(f"PeakLoad (трансформированное):   {fmt_num(details['peak_transformed'], '.4f')}")
         print(f"PL_hat (первая стадия):          {fmt_num(details['pl_hat'], '.4f')}")
-        print(
-            f"PL_hat_exog (диагностика):       {fmt_num(details['pl_hat_exog'], '.4f')}"
-        )
+        print(f"PL_hat_exog (диагностика):       {fmt_num(details['pl_hat_exog'], '.4f')}")
         print(f"v_hat (станд. остаток):          {fmt_num(details['v_hat'], '.4f')}")
         print(f"Линейный предиктор lp:           {fmt_num(details['lp'], '.4f')}")
         print(
             f"Базовый кумулятивный риск H0({cfg.horizon:.0f} мч): {fmt_num(details['h0_t'], '.6f')}"
         )
-        print(
-            f"Отношение рисков exp(lp):        {fmt_num(details['hazard_ratio'], '.4f')}"
-        )
-        print(
-            f"Индивидуальный кумулятивный риск: {fmt_num(details['cumulative_hazard'], '.6f')}"
-        )
+        print(f"Отношение рисков exp(lp):        {fmt_num(details['hazard_ratio'], '.4f')}")
+        print(f"Индивидуальный кумулятивный риск: {fmt_num(details['cumulative_hazard'], '.6f')}")
 
         manual_prob = _as_float(details["probability"], "manual probability")
         print(
@@ -3185,9 +3100,7 @@ def compute_all_peaks(
         # ★ КРИТИЧЕСКОЕ УЛУЧШЕНИЕ: ω_k(X) теперь зависит от стандартизированных
         # ковариат через логистическую регрессию, а не константу.
         # ======================================================================
-        model_event_def = str(
-            cfg.training_meta.get("event_definition", "major_claim")
-        ).lower()
+        model_event_def = str(cfg.training_meta.get("event_definition", "major_claim")).lower()
         user_wants_major = float(cfg.major_failure_share) < 1.0
 
         if model_event_def in {"major_claim", "total_loss"}:
@@ -3249,7 +3162,10 @@ def compute_all_peaks(
                 logger.info(
                     "Cause-specific share: использованы обученные коэффициенты "
                     "(alpha=%.3f, beta_peak=%.3f, beta_age=%.3f, beta_hours=%.3f)",
-                    alpha_logit, beta_peak, beta_age, beta_hours,
+                    alpha_logit,
+                    beta_peak,
+                    beta_age,
+                    beta_hours,
                 )
             else:
                 # Приор из MAJOR_FAILURE_SHARE_PRIOR: mean=0.30, effective_n=30
@@ -3269,19 +3185,22 @@ def compute_all_peaks(
                     "Неопределённость НЕ пропагирована в доверительные интервалы. "
                     "Для точного расчёта обучите модель через "
                     "fit_cause_specific_logistic().",
-                    beta_peak, beta_age, beta_hours,
+                    beta_peak,
+                    beta_age,
+                    beta_hours,
                 )
 
-            logit_share = (
-                alpha_logit + beta_peak * float(peak_std) + beta_age * float(age_std)
-            )
+            logit_share = alpha_logit + beta_peak * float(peak_std) + beta_age * float(age_std)
             covariate_dependent_share = 1.0 / (1.0 + math.exp(-logit_share))
             effective_share = float(max(0.05, min(0.95, covariate_dependent_share)))
 
             logger.info(
                 "Cause-specific share: P(major|X) = %.3f "
                 "(logit=%.3f, PeakLoad_std=%.3f, Age_std=%.3f)",
-                effective_share, logit_share, peak_std, age_std,
+                effective_share,
+                logit_share,
+                peak_std,
+                age_std,
             )
         else:
             # Любой отказ — share = 1.0
@@ -3307,10 +3226,7 @@ def compute_all_peaks(
             baseline_spec = {"family": "breslow"}
         baseline_family = str(baseline_spec.get("family", "breslow")).lower()
 
-        use_cif_integration = (
-            HAS_PARAMETRIC_CIF
-            and baseline_family in VALID_PARAMETRIC_FAMILIES
-        )
+        use_cif_integration = HAS_PARAMETRIC_CIF and baseline_family in VALID_PARAMETRIC_FAMILIES
 
         if use_cif_integration:
             # ─── CIF через квадратуру Гаусса-Лежандра ─────────────────────
@@ -3359,14 +3275,12 @@ def compute_all_peaks(
 
                 event_probability = float(min(max(cif_value, 0.0), 1.0))
                 print(
-                    f"  CIF (численное интегрирование, {baseline_family}): "
-                    f"{event_probability:.6f}"
+                    f"  CIF (численное интегрирование, {baseline_family}): {event_probability:.6f}"
                 )
 
             except Exception as cif_exc:  # noqa: BLE001
                 logger.warning(
-                    "CIF-интегрирование не удалось (%s). "
-                    "Fallback на пропорциональную формулу ω·F.",
+                    "CIF-интегрирование не удалось (%s). Fallback на пропорциональную формулу ω·F.",
                     cif_exc,
                 )
                 event_probability = adjusted_probability * effective_share
@@ -3406,10 +3320,8 @@ def compute_all_peaks(
                 f"  (применён сезонный множитель частоты {fmt_num(cfg.season_hazard_factor, '.3f')})"
             )
 
-        horizon_calendar_days = _engine_hours_to_calendar_days(
-            cfg.horizon, cfg.hours_per_day
-        )
-        premium_kwargs: Dict[str, Any] = {
+        horizon_calendar_days = _engine_hours_to_calendar_days(cfg.horizon, cfg.hours_per_day)
+        premium_kwargs: dict[str, Any] = {
             "discount_rate": cfg.discount_rate,
             "calibration_horizon_days": None,
             "policy_horizon_days": horizon_calendar_days,
@@ -3434,9 +3346,7 @@ def compute_all_peaks(
             raise SystemExit(6)
 
         if not isinstance(premium, dict):
-            logger.error(
-                "premium_engine вернул неожиданный тип: %s", type(premium).__name__
-            )
+            logger.error("premium_engine вернул неожиданный тип: %s", type(premium).__name__)
             raise SystemExit(6)
 
         net_premium = premium.get("net")
@@ -3449,7 +3359,9 @@ def compute_all_peaks(
         print(f"Брутто-премия:         {fmt_money(gross_premium)} руб.")
         tariff_value = _as_optional_float(premium.get("tariff"))
         if tariff_value is not None:
-            print(f"Страховая ставка от страховой суммы:                 {float(tariff_value):.4f} %")
+            print(
+                f"Страховая ставка от страховой суммы:                 {float(tariff_value):.4f} %"
+            )
         else:
             print(f"Тариф:                 {fmt_num(premium.get('tariff'))}")
         discount_factor = premium.get("discount_factor")
@@ -3475,8 +3387,8 @@ def compute_all_peaks(
                 # Var(L) = p * Var(S) + p*(1-p) * E[S]^2
                 expected_severity = cfg.expected_loss_per_failure
                 total_variance = (
-                    event_probability * severity_var + 
-                    event_probability * (1.0 - event_probability) * expected_severity ** 2
+                    event_probability * severity_var
+                    + event_probability * (1.0 - event_probability) * expected_severity**2
                 )
                 severity_risk_margin = 1.645 * math.sqrt(total_variance)
                 severity_dispersion_warning = (
@@ -3485,8 +3397,7 @@ def compute_all_peaks(
                 )
             else:
                 severity_dispersion_warning = (
-                    "Severity-модель не содержит оценки дисперсии. "
-                    "Risk margin не рассчитан."
+                    "Severity-модель не содержит оценки дисперсии. Risk margin не рассчитан."
                 )
         else:
             # PATCH 2.1: Корректная дисперсия через Lognormal Variance
@@ -3506,15 +3417,15 @@ def compute_all_peaks(
                 downtime_sd = cfg.downtime_cost_per_failure * 0.5
 
             # Объединённая SD (repair + downtime независимы)
-            total_sd = math.sqrt(severity_sd ** 2 + downtime_sd ** 2)
-            
+            total_sd = math.sqrt(severity_sd**2 + downtime_sd**2)
+
             # PATCH 1 (CRITICAL): Правильная формула Risk Margin с учетом биномиальной дисперсии
             # L = I * S, где I ~ Bernoulli(p), S — severity
             # Var(L) = p * Var(S) + p*(1-p) * E[S]^2
             expected_severity = cfg.expected_loss_per_failure
             total_variance = (
-                event_probability * total_sd ** 2 + 
-                event_probability * (1.0 - event_probability) * expected_severity ** 2
+                event_probability * total_sd**2
+                + event_probability * (1.0 - event_probability) * expected_severity**2
             )
             severity_risk_margin = 1.645 * math.sqrt(total_variance)
             severity_dispersion_warning = (
@@ -3550,7 +3461,7 @@ def compute_all_peaks(
             print(
                 f"  Операция: {op_name_ru} ({season_name})"
                 f"{intensity_str}"
-                f" | Средняя нагрузка: {op_peak_mean*100:.1f}% ± {op_peak_std*100:.1f}%"
+                f" | Средняя нагрузка: {op_peak_mean * 100:.1f}% ± {op_peak_std * 100:.1f}%"
             )
         else:
             seasonal_factor_raw = SEASONAL_FACTORS.get(season_name, 1.0)
@@ -3589,7 +3500,7 @@ def compute_all_peaks(
 
 
 def display_results(
-    results: List[Dict[str, Any]], cfg: CalculatorConfig, params: ModelParameters
+    results: list[dict[str, Any]], cfg: CalculatorConfig, params: ModelParameters
 ) -> None:
     last_result = results[-1]
     last_details = last_result["details"]
@@ -3617,8 +3528,10 @@ def display_results(
             print(f"Эндогенность обнаружена: {endogenous}")
         instrument_adequate = iv_diagnostics.get("instrument_adequate")
         if instrument_adequate is not None:
-            print("Первая стадия: инструмент релевантен по screening-критерию: "
-                  + ("да" if instrument_adequate else "нет"))
+            print(
+                "Первая стадия: инструмент релевантен по screening-критерию: "
+                + ("да" if instrument_adequate else "нет")
+            )
             print("Экзогенность и exclusion restriction: не проверены")
 
     print("\nРасчёт завершён.")

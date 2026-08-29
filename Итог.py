@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Итог.py (v3.2 / v0.2)
 Monte Carlo IV Cox (Control Function / 2SRI) — simulation + estimation.
@@ -28,12 +27,7 @@ import traceback
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-
-from enterprise_quality import (
-    generate_enterprise_quality,
-    validate_enterprise_structure,
-)
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -45,13 +39,14 @@ from lifelines import CoxPHFitter
 from constants import (
     BRAND_MAP,
     DEFAULT_BRAND_PROB_BY_CODE,
-    SEGMENTS,
-    RF_HEAVY_BRAND_CATALOG,
-    FREQ_SHARES,
-    SEVERITY_WEIGHTS,
     MTBF_BASELINE_HOURS,
-    MODEL_TIME_UNIT,
     PL_HAT_EXOG_CONVENTION,
+    RF_HEAVY_BRAND_CATALOG,
+    SEGMENTS,
+)
+from enterprise_quality import (
+    generate_enterprise_quality,
+    validate_enterprise_structure,
 )
 
 # Optional scipy.interpolate for spline basis.
@@ -127,7 +122,7 @@ def _scalar_from_array(value: Any) -> float:
         return np.nan
 
 
-def _safe_keys(obj: Any) -> List[Any]:
+def _safe_keys(obj: Any) -> list[Any]:
     """
     Безопасно возвращает ключи из dict/Series/params-like объекта.
 
@@ -251,7 +246,7 @@ _COMPILE_BAD_KEYWORDS = [re.compile(p, re.IGNORECASE) for p in _BAD_KEYWORDS]
 # P-03: event definitions
 # Keep in sync with constants.VALID_EVENT_DEFINITIONS.
 # ---------------------------------------------------------------------------
-EVENT_DEFINITIONS: Tuple[str, ...] = (
+EVENT_DEFINITIONS: tuple[str, ...] = (
     "total_loss",
     "major_claim",
     "any_failure",
@@ -260,7 +255,7 @@ EVENT_DEFINITIONS: Tuple[str, ...] = (
 # ---------------------------------------------------------------------------
 # P-02: Hours prior by segment
 # ---------------------------------------------------------------------------
-HOURS_PRIOR: Dict[str, Dict[str, float]] = {
+HOURS_PRIOR: dict[str, dict[str, float]] = {
     "light": {
         "median": 900.0,
         "sigma": 0.60,
@@ -276,7 +271,7 @@ HOURS_PRIOR: Dict[str, Dict[str, float]] = {
 }
 
 # Фаза 4.4: Наработка по мониторингу РФ (общая за период, не годовая)
-HOURS_PRIOR_RF: Dict[str, Dict[str, float]] = {
+HOURS_PRIOR_RF: dict[str, dict[str, float]] = {
     "Fendt 930 Vario": {"min": 3782, "max": 5725, "years": 4},
     "John Deere 8430": {"min": 523, "max": 4000, "years": 3},
     "Кировец К-744Р": {"min": 59, "max": 3420, "years": 3},
@@ -292,7 +287,7 @@ DEFAULT_BASELINE_HAZARD: float = 1.0 / MTBF_BASELINE_HOURS
 # ---------------------------------------------------------------------------
 # P-09: downtime by MTTR
 # ---------------------------------------------------------------------------
-MTTR_HOURS: Dict[str, float] = {
+MTTR_HOURS: dict[str, float] = {
     "minor": 8.0,
     "major": 48.0,
 }
@@ -315,7 +310,7 @@ def downtime_hours_from_failure_type(failure_type: Any) -> np.ndarray:
 def major_failure_beta_prior(
     mean: float = 0.30,
     effective_n: float = 30.0,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     P-04: Beta-prior for major failure share instead of a point constant.
     """
@@ -355,8 +350,8 @@ def major_failure_beta_prior(
 @dataclass
 class ConvergenceInfo:
     penalizer: float
-    warning: Optional[str] = None
-    attempted_penalizers: List[float] = field(default_factory=list)
+    warning: str | None = None
+    attempted_penalizers: list[float] = field(default_factory=list)
 
 
 @dataclass
@@ -382,7 +377,7 @@ class FirstStageFit:
     fitted: Any
     residuals: np.ndarray
     design: np.ndarray
-    x_cols: List[str]
+    x_cols: list[str]
     report: FirstStageReport
 
 
@@ -390,29 +385,29 @@ class FirstStageFit:
 class CFModelResult:
     gamma_hat: float = float("nan")
     naive_model_se: float = float("nan")
-    bootstrap_se: Optional[float] = None
+    bootstrap_se: float | None = None
     se_type: str = "naive"
     cf_coef: float = float("nan")
-    cf_coef_signed: Optional[float] = None
-    cph: Optional[CoxPHFitter] = None
+    cf_coef_signed: float | None = None
+    cph: CoxPHFitter | None = None
     max_se: float = float("nan")
     penalizer: float = 0.0
     is_penalized: bool = False
-    convergence_info: Optional[ConvergenceInfo] = None
-    warnings: List[str] = field(default_factory=list)
-    n: Optional[int] = None
-    n_events: Optional[int] = None
+    convergence_info: ConvergenceInfo | None = None
+    warnings: list[str] = field(default_factory=list)
+    n: int | None = None
+    n_events: int | None = None
     v_hat_basis: str = "linear"
-    first_stage_report: Optional[FirstStageReport] = None
-    partial_out_all_betas: Dict[str, float] = field(default_factory=dict)
-    training_x_means: Dict[str, float] = field(default_factory=dict)
+    first_stage_report: FirstStageReport | None = None
+    partial_out_all_betas: dict[str, float] = field(default_factory=dict)
+    training_x_means: dict[str, float] = field(default_factory=dict)
     training_pl_hat_mean: float = 0.0
     training_residuals_std: float = 0.0
     training_residuals_mean: float = 0.0
-    vif_peakload: Optional[float] = None
-    vif_vhat: Optional[float] = None
-    vif_max: Optional[float] = None
-    cf_basis_metadata: Optional[Dict[str, Any]] = None
+    vif_peakload: float | None = None
+    vif_vhat: float | None = None
+    vif_max: float | None = None
+    cf_basis_metadata: dict[str, Any] | None = None
 
 
 @dataclass
@@ -424,20 +419,20 @@ class NaiveCoxResult:
     is_penalized: bool
     cph: CoxPHFitter
     convergence_info: ConvergenceInfo
-    warnings: List[str] = field(default_factory=list)
-    n: Optional[int] = None
-    n_events: Optional[int] = None
+    warnings: list[str] = field(default_factory=list)
+    n: int | None = None
+    n_events: int | None = None
 
 
 @dataclass
 class EndogeneityTestResult:
-    lr_stat: Optional[float]
-    lr_pvalue: Optional[float]
-    endogenous: Optional[bool]
+    lr_stat: float | None
+    lr_pvalue: float | None
+    endogenous: bool | None
     penalized: bool
     df: int
-    actual_cf_cols: List[str] = field(default_factory=list)
-    note: Optional[str] = None
+    actual_cf_cols: list[str] = field(default_factory=list)
+    note: str | None = None
 
 
 @dataclass
@@ -447,22 +442,22 @@ class CalibrationResult:
     achieved_event_rate: float
     converged: bool
     iterations: int
-    post_check_passed: Optional[bool] = None
-    post_check_rates: Dict[float, float] = field(default_factory=dict)
+    post_check_passed: bool | None = None
+    post_check_rates: dict[float, float] = field(default_factory=dict)
 
 
 @dataclass
 class BootstrapResult:
-    bootstrap_se: Optional[float]
+    bootstrap_se: float | None
     n_successful: int
     n_failures: int
     success_rate: float
-    ci_lower: Optional[float] = None
-    ci_upper: Optional[float] = None
+    ci_lower: float | None = None
+    ci_upper: float | None = None
     high_failure_rate: bool = False
-    estimates: Optional[List[float]] = None
-    error_examples: List[str] = field(default_factory=list)
-    rejection_reason_summary: Dict[str, int] = field(default_factory=dict)
+    estimates: list[float] | None = None
+    error_examples: list[str] = field(default_factory=list)
+    rejection_reason_summary: dict[str, int] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -478,7 +473,7 @@ class DGPParameters:
     # FIX 1: PeakLoad normalized to [0, 1] range to match TUM CAN bus data.
     # Original intercept was 10.0 (DGP scale); now 0.5 (midpoint of [0,1]).
     intercept: float = 0.5
-    structural_intercept: Optional[float] = None
+    structural_intercept: float | None = None
     first_stage_z_coef: float = 0.5
 
     # First stage coefficients — scaled for [0,1] range.
@@ -501,11 +496,11 @@ class DGPParameters:
     # ─── Фаза 8: Interaction Age × Hours ───────────────────────────
     beta_age_hours: float = 0.15  # синергетический эффект
 
-    clip_lp: Optional[float] = None
+    clip_lp: float | None = None
     corr_zu: float = 0.0
 
     # Baseline hazard
-    baseline_shape: Optional[float] = 1.88
+    baseline_shape: float | None = 1.88
     baseline_family: str = "weibull"
 
     # ─── v0.2 / P-01 / P-03: competing risks and event definition ───────
@@ -517,9 +512,9 @@ class DGPParameters:
     # Brand encoding
     brand_encoding: str = "dummies"
     brand_reference_code: int = 0
-    brand_prob_by_code: Optional[Dict[int, float]] = None
-    fs_brand_coefs: Optional[Dict[int, float]] = None
-    beta_brand_coefs: Optional[Dict[int, float]] = None
+    brand_prob_by_code: dict[int, float] | None = None
+    fs_brand_coefs: dict[int, float] | None = None
+    beta_brand_coefs: dict[int, float] | None = None
 
     # ─── Фаза 3: калибровка PeakLoad под TUM ───────────────────────────
     # FIX 1: PeakLoad теперь генерируется в [0, 1] диапазоне.
@@ -559,9 +554,9 @@ class Scenario:
     pi: float
     rho: float
     delta: float
-    clip_lp: Optional[float]
+    clip_lp: float | None
     corr_zu: float
-    target_event_rate: Optional[float]
+    target_event_rate: float | None
     experiment: str = "unspecified"
 
     def scenario_id(self) -> str:
@@ -611,19 +606,19 @@ class SimulationConfig:
     max_failure_rate: float = 0.10
     allow_experimental_bootstrap: bool = False
     v_hat_basis: str = "linear"
-    v_hat_basis_params: Optional[Dict[str, Any]] = field(default_factory=lambda: {"n_knots": 2})
+    v_hat_basis_params: dict[str, Any] | None = field(default_factory=lambda: {"n_knots": 2})
     contamination_probability: float = 1.0
-    extra_x_cols: Optional[List[str]] = None
-    center_peakload: Optional[float] = None
+    extra_x_cols: list[str] | None = None
+    center_peakload: float | None = None
 
 
 @dataclass(frozen=True)
 class CFFitOptions:
     cox_se_threshold: float
     v_hat_basis: str
-    v_hat_basis_params: Optional[Dict[str, Any]]
-    extra_x_cols: Optional[List[str]]
-    center_peakload: Optional[float]
+    v_hat_basis_params: dict[str, Any] | None
+    extra_x_cols: list[str] | None
+    center_peakload: float | None
     brand_encoding: str
     brand_reference_code: int
     var_z_threshold: float
@@ -632,7 +627,7 @@ class CFFitOptions:
     min_cox_events: int
     min_events_per_covariate: int
     save_tracebacks: bool
-    cluster_col: Optional[str] = None
+    cluster_col: str | None = None
     # ─── Bootstrap SE for generated regressors (FIX 4) ───
     # Bootstrap включён по умолчанию для корректного учёта
     # неопределённости первой стадии (generated regressor problem).
@@ -712,7 +707,7 @@ def validate_simulation_config(config: SimulationConfig) -> None:
 
 # ---------------------------------------------------------------------------    # Utilities
 # ---------------------------------------------------------------------------
-def format_exception(exc: Optional[BaseException], save_traceback: bool) -> str:
+def format_exception(exc: BaseException | None, save_traceback: bool) -> str:
     if exc is None:
         return "Unknown error"
 
@@ -781,7 +776,7 @@ def _standardize_array(x: np.ndarray, floor: float = 1e-12) -> np.ndarray:
     return (x - m) / s
 
 
-def replace_nonfinite(obj: Any, visited: Optional[set] = None) -> Any:
+def replace_nonfinite(obj: Any, visited: set | None = None) -> Any:
     """JSON-safe recursive replacement of non-finite values."""
     if visited is None:
         visited = set()
@@ -827,7 +822,7 @@ def replace_nonfinite(obj: Any, visited: Optional[set] = None) -> Any:
         return obj
 
     try:
-        from dataclasses import is_dataclass, asdict
+        from dataclasses import asdict, is_dataclass
 
         if is_dataclass(obj):
             return replace_nonfinite(asdict(obj), visited)
@@ -842,7 +837,7 @@ def replace_nonfinite(obj: Any, visited: Optional[set] = None) -> Any:
 
 def _validate_survival_frame(
     df: pd.DataFrame,
-    required_covs: List[str],
+    required_covs: list[str],
 ) -> None:
     required = {"time", "event"} | set(required_covs)
     missing = required - set(df.columns)
@@ -871,13 +866,13 @@ def _validate_survival_frame(
 
 def _validate_extra_x_cols(
     source_data: pd.DataFrame,
-    extra_x_cols: Optional[List[str]],
-) -> List[str]:
+    extra_x_cols: list[str] | None,
+) -> list[str]:
     if not extra_x_cols:
         return []
 
     seen = set()
-    valid_cols: List[str] = []
+    valid_cols: list[str] = []
 
     for col in extra_x_cols:
         col = str(col)
@@ -910,12 +905,12 @@ def _validate_extra_x_cols(
 
 
 def _summarize_warnings(
-    caught_warnings: Optional[List[warnings.WarningMessage]],
-) -> Optional[str]:
+    caught_warnings: list[warnings.WarningMessage] | None,
+) -> str | None:
     if not caught_warnings:
         return None
 
-    bad_messages: List[str] = []
+    bad_messages: list[str] = []
 
     for w in caught_warnings:
         msg = str(w.message)
@@ -930,16 +925,16 @@ def _summarize_warnings(
 
 
 def _validate_int_float_dict(
-    value: Optional[Dict[Any, float]],
+    value: dict[Any, float] | None,
     name: str,
-) -> Optional[Dict[int, float]]:
+) -> dict[int, float] | None:
     if value is None:
         return None
 
     if not isinstance(value, dict):
         raise ValueError(f"{name} must be dict or None")
 
-    out: Dict[int, float] = {}
+    out: dict[int, float] = {}
 
     for k, v in value.items():
         out[int(k)] = _as_finite_float(v, f"{name}[{k}]")
@@ -948,15 +943,15 @@ def _validate_int_float_dict(
 
 
 def _validate_brand_probs(
-    probs: Optional[Dict[int, float]],
-) -> Dict[int, float]:
+    probs: dict[int, float] | None,
+) -> dict[int, float]:
     if probs is None:
         probs = DEFAULT_BRAND_PROB_BY_CODE
 
     if not isinstance(probs, dict) or not probs:
         raise ValueError("brand_prob_by_code must be non-empty dict")
 
-    out: Dict[int, float] = {}
+    out: dict[int, float] = {}
     total = 0.0
 
     for code, p in probs.items():
@@ -977,7 +972,7 @@ def _validate_brand_probs(
 def _default_brand_coefs(
     scalar: float,
     reference_code: int,
-) -> Dict[int, float]:
+) -> dict[int, float]:
     """
     Compatibility mapping from legacy scalar brand effect to dummy coefficients
     relative to reference category.
@@ -985,7 +980,7 @@ def _default_brand_coefs(
     scalar = float(scalar)
     reference_code = int(reference_code)
 
-    out: Dict[int, float] = {}
+    out: dict[int, float] = {}
 
     for code in BRAND_MAP.keys():
         if code == reference_code:
@@ -999,7 +994,7 @@ def _default_brand_coefs(
 # ---------------------------------------------------------------------------
 # X standardization / design building
 # ---------------------------------------------------------------------------
-X_STANDARDIZATION: Dict[str, Dict[str, Any]] = {
+X_STANDARDIZATION: dict[str, dict[str, Any]] = {
     "x_age": {
         "raw_col": "Age",
         "standardize": True,
@@ -1079,7 +1074,7 @@ def _ensure_brand_dummies(
     model_data: pd.DataFrame,
     source_data: pd.DataFrame,
     reference_code: int,
-) -> List[str]:
+) -> list[str]:
     reference_code = int(reference_code)
     ref_name = BRAND_MAP.get(reference_code, str(reference_code))
     ref_col = f"brand_{ref_name}"
@@ -1103,7 +1098,7 @@ def _ensure_brand_dummies(
 
         return sorted(existing)
 
-    cols: List[str] = []
+    cols: list[str] = []
 
     for code, name in BRAND_MAP.items():
         if int(code) == reference_code:
@@ -1119,12 +1114,12 @@ def _ensure_brand_dummies(
 def _add_design_x_columns(
     model_data: pd.DataFrame,
     source_data: pd.DataFrame,
-    extra_x_cols: Optional[List[str]] = None,
+    extra_x_cols: list[str] | None = None,
     brand_encoding: str = "dummies",
     brand_reference_code: int = 0,
-) -> List[str]:
+) -> list[str]:
     """Add covariate design columns and return their names."""
-    x_cols: List[str] = []
+    x_cols: list[str] = []
 
     # Continuous X
     for std_col in CONTINUOUS_X_COLS:
@@ -1241,7 +1236,7 @@ def validate_dgp_for_causal_mode(dgp: DGPParameters, iv_mode: str = "causal") ->
 # ---------------------------------------------------------------------------
 # DGP validation
 # ---------------------------------------------------------------------------
-def _validate_dgp(dgp: Optional[DGPParameters]) -> DGPParameters:
+def _validate_dgp(dgp: DGPParameters | None) -> DGPParameters:
     if dgp is None:
         dgp = DGPParameters()
 
@@ -1446,7 +1441,7 @@ def _correlated_standard_errors(
     rng: np.random.Generator,
     n: int,
     rho: float,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     rho = _validate_corr(rho, "rho")
 
     eps = _standardize_sample(rng.normal(size=n))
@@ -1468,7 +1463,7 @@ def _normal_correlated_errors(
     rng: np.random.Generator,
     n: int,
     rho: float,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     return _correlated_standard_errors(rng, n, rho)
 
 
@@ -1476,7 +1471,7 @@ def _contaminated_errors(
     rng: np.random.Generator,
     n: int,
     rho: float,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """Heavy-tailed errors using Gaussian copula with t(3) marginals."""
     stats_mod = _scipy_stats
 
@@ -1503,7 +1498,7 @@ def _generate_errors(
     rho: float,
     contamination: bool,
     contamination_probability: float,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     rho = _validate_corr(rho, "rho")
 
     try:
@@ -1543,7 +1538,7 @@ VALID_WEATHER_CAMPAIGNS = frozenset({"sowing", "harvest"})
 
 def load_real_weather_windows(
     campaign: str = "sowing",
-    path: Optional[Path] = None,
+    path: Path | None = None,
 ) -> np.ndarray:
     """
     Фаза 6.6: загрузить реальные working_days_window из
@@ -1624,7 +1619,7 @@ def load_real_covariates_for_simulation(
     campaign: str = "sowing",
     jitter_std: float = 0.05,
     z_scale_factor: float = 2.0,
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     """
     Загрузить реальные weather/soil/rainfall данные и сэмплировать n значений.
 
@@ -1636,7 +1631,7 @@ def load_real_covariates_for_simulation(
     а не уникальный ID трактора. Все тракторы в одном кластере
     имеют одинаковые Z, x_climate, x_soil.
     """
-    result: Dict[str, np.ndarray] = {}
+    result: dict[str, np.ndarray] = {}
 
     # ─── Загрузка rainfall anomaly для Z ────────────────────────────
     rain_path = Path("data/processed/weather/rainfall_anomaly.csv")
@@ -1799,7 +1794,7 @@ def generate_base_instrument(
     weather_mean_days: float = 45.0,
     weather_std_days: float = 12.0,
     weather_campaign: str = "sowing",
-    weather_data_path: Optional[Path] = None,
+    weather_data_path: Path | None = None,
 ) -> np.ndarray:
     """
     Генерация базового инструмента Z.
@@ -1855,9 +1850,9 @@ def _simulate_event_times(
     safe_lp: np.ndarray,
     baseline_hazard: float,
     baseline_family: str,
-    baseline_shape: Optional[float],
+    baseline_shape: float | None,
     u_event: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     family = str(baseline_family).lower()
 
     if family not in _VALID_BASELINE_FAMILIES:
@@ -1991,7 +1986,7 @@ def generate_production_year(
     rng: np.random.Generator,
     n: int,
     observation_year: int = 2009,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Фаза 4.3: генерация когорт выпуска и возраста на момент наблюдения.
     Когорты основаны на мониторинге РФ 2005–2009.
@@ -2011,8 +2006,8 @@ def generate_data(
     baseline_hazard: float,
     censoring_scale: float,
     rng: np.random.Generator,
-    instrument_strength: Optional[float] = None,
-    dgp: Optional[DGPParameters] = None,
+    instrument_strength: float | None = None,
+    dgp: DGPParameters | None = None,
     instrument_source: str = "normal",
     contamination_probability: float = 1.0,
 ) -> pd.DataFrame:
@@ -2222,8 +2217,128 @@ def generate_data(
                     _pl_target_std,
                 )
 
+    # ─── Фаза 3: глобальная сигмоида (исправленная версия) ────────────
+    # ПРАВИЛЬНЫЙ порядок:
+    #   1. Стандартизация peak_load_base (mean=0, std=1)
+    #   2. Подбор σ логит-нормального через численную оптимизацию
+    #   3. Применение: peak_load = σ(μ_logit + σ_logit · z)
+
+    if (
+        getattr(dgp, "peakload_target_mean", None) is not None
+        and getattr(dgp, "peakload_target_std", None) is not None
+    ):
+        _pl_target_mean = float(dgp.peakload_target_mean)
+        _pl_target_std = float(dgp.peakload_target_std)
+
+        if _pl_target_std > 1e-9 and 0.0 < _pl_target_mean < 1.0:
+            # Шаг 1: Стандартизация (НЕ перенормировка под TUM)
+            _pl_mean_raw = float(np.mean(peak_load_base))
+            _pl_std_raw = float(np.std(peak_load_base, ddof=1))
+            if _pl_std_raw > 1e-9:
+                _z = (peak_load_base - _pl_mean_raw) / _pl_std_raw
+            else:
+                _z = np.zeros_like(peak_load_base)
+
+            # Шаг 2: 2D калибровка (μ, σ) через fsolve
+            # Подбираем mu_logit и sigma_logit одновременно,
+            # чтобы совпадали и mean, и std логит-нормального.
+            from scipy.special import expit, logit as _logit_fn
+            from scipy.optimize import fsolve
+
+            def _logit_normal_moments(mu, sigma, z):
+                """Вычисляет среднее и стандартное отклонение σ(mu + sigma*z)."""
+                vals = expit(mu + sigma * z)
+                return float(np.mean(vals)), float(np.std(vals, ddof=1))
+
+            def _equations(params, z, target_mean, target_std):
+                mu, sigma = params
+                m, s = _logit_normal_moments(mu, sigma, z)
+                return [m - target_mean, s - target_std]
+
+            # Начальное приближение
+            _mu_init = float(_logit_fn(_pl_target_mean))
+            _sigma_init = _pl_target_std / (
+                _pl_target_mean * (1.0 - _pl_target_mean)
+            )
+
+            try:
+                _mu_logit, _sigma_logit = fsolve(
+                    _equations,
+                    [_mu_init, _sigma_init],
+                    args=(_z, _pl_target_mean, _pl_target_std),
+                    full_output=False,
+                    xtol=1e-10,
+                )
+                _sigma_logit = max(float(_sigma_logit), 0.01)
+            except Exception:
+                # Fallback: только 1D калибровка (как было раньше)
+                _mu_logit = _mu_init
+                _sigma_logit = _sigma_init
+
+            # Шаг 3: Применение
+            peak_load = expit(_mu_logit + _sigma_logit * _z)
+
+            # ─── Корректировка структурного интерцепта ────────────────
+            # struct_int УЖЕ перенормирован под TUM выше в коде:
+            #   struct_int = _pl_target_mean + (struct_int - _pl_mean) / _pl_std * _pl_target_std
+            #
+            # НЕ перезаписываем его на dgp.structural_intercept!
+            #
+            # Поскольку peak_load трансформирован через сигмоиду,
+            # struct_int тоже должен быть трансформирован через ТУ ЖЕ сигмоиду,
+            # чтобы (peak_load - struct_int) был корректным.
+
+            if _pl_std_raw > 1e-9:
+                _z_si = (struct_int - _pl_mean_raw) / _pl_std_raw
+                struct_int = float(expit(_mu_logit + _sigma_logit * _z_si))
+                logger.info(
+                    "struct_int трансформирован через сигмоиду: %.4f",
+                    struct_int,
+                )
+            # Если _pl_std_raw <= 1e-9, peak_load не трансформирован,
+            # и struct_int остаётся как есть (линейная шкала).
+            else:
+                if dgp.structural_intercept is None:
+                    struct_int = float(dgp.intercept)
+
+            _pl_actual_mean = float(np.mean(peak_load))
+            _pl_actual_std = float(np.std(peak_load, ddof=1))
+            _pl_min = float(np.min(peak_load))
+            _pl_max = float(np.max(peak_load))
+
+            logger.info(
+                "PeakLoad глобальная сигмоида: mean=%.4f (цель %.4f), "
+                "std=%.4f (цель %.4f), range=[%.4f, %.4f], "
+                "sigma_logit=%.4f",
+                _pl_actual_mean, _pl_target_mean,
+                _pl_actual_std, _pl_target_std,
+                _pl_min, _pl_max,
+                _sigma_logit,
+            )
+
+            # Проверка качества калибровки
+            if abs(_pl_actual_mean - _pl_target_mean) > 0.05:
+                logger.warning(
+                    "⚠️ Среднее PeakLoad отклоняется от цели на %.4f",
+                    abs(_pl_actual_mean - _pl_target_mean),
+                )
+            if abs(_pl_actual_std - _pl_target_std) > 0.05:
+                logger.warning(
+                    "⚠️ Std PeakLoad отклоняется от цели на %.4f",
+                    abs(_pl_actual_std - _pl_target_std),
+                )
+        else:
+            logger.warning(
+                "PeakLoad калибровка пропущена: некорректные параметры "
+                "(mean=%.4f, std=%.4f)",
+                _pl_target_mean, _pl_target_std,
+            )
+    else:
+        # Без TUM калибровки — оставляем как есть
+        pass
+
     # Теперь peak_load будет построен на основе перенормированного base
-    peak_load = peak_load_base.copy()
+    peak_load = peak_load.copy()
 
     # Инициализируем lp_raw заранее, чтобы избежать UnboundLocalError
     lp_raw = None
@@ -2253,18 +2368,6 @@ def generate_data(
 
     else:
         raise ValueError("Invalid brand_encoding after DGP validation")
-
-    # PATCH-04: Transform PeakLogit to (0, 1) using sigmoid instead of hard clipping
-    # Hard clipping creates Tobit-like censoring that breaks OLS assumptions in first stage.
-    # Sigmoid transformation preserves continuity and differentiability.
-    n_clipped_before = int(((peak_load < 0.0) | (peak_load > 1.0)).sum())
-    if n_clipped_before > 0:
-        logger.warning(
-            "PeakLoad transformed via sigmoid for %d/%d observations (%.1f%%) to avoid Tobit censoring bias",
-            n_clipped_before, n, 100*n_clipped_before/n,
-        )
-    # Apply sigmoid with clipping to prevent overflow: sigma(x) = 1/(1+exp(-x))
-    peak_load = 1.0 / (1.0 + np.exp(-np.clip(peak_load, -10.0, 10.0)))
 
     # ─── Построение linear predictor ────────────────────────────────────
     lp_raw = (
@@ -2696,7 +2799,7 @@ class FirstStageAdapter:
 
 def run_first_stage_on_claims(
     data_mod: pd.DataFrame,
-) -> Tuple[Any, np.ndarray, List[str], Dict[str, float], Dict[str, Any]]:
+) -> tuple[Any, np.ndarray, list[str], dict[str, float], dict[str, Any]]:
     """
     Оценить первую стадию на claims-данных.
     PeakLoad ~ Z + X
@@ -2789,7 +2892,7 @@ def fit_cf_cox_on_claims(
     data_mod: pd.DataFrame,
     first_stage: Any,
     v_hat_basis: str = "linear",
-    v_hat_basis_params: Optional[Dict[str, Any]] = None,
+    v_hat_basis_params: dict[str, Any] | None = None,
 ) -> Any:
     """
     Оценить CF Cox модель на claims-данных.
@@ -2916,15 +3019,15 @@ def calibrate_censoring_scale_deterministic(
     target_event_rate: float,
     n_calib: int,
     rng: np.random.Generator,
-    instrument_strength: Optional[float] = None,
-    dgp: Optional[DGPParameters] = None,
-    baseline_hazard: Optional[float] = None,
+    instrument_strength: float | None = None,
+    dgp: DGPParameters | None = None,
+    baseline_hazard: float | None = None,
     instrument_source: str = "normal",
     tol: float = 0.005,
     max_iters: int = 40,
     post_check: bool = True,
     post_check_n: int = 5000,
-    post_check_strengths: Optional[List[float]] = None,
+    post_check_strengths: list[float] | None = None,
     contamination: bool = False,
     contamination_probability: float = 1.0,
 ) -> CalibrationResult:
@@ -3052,8 +3155,8 @@ def calibrate_censoring_scale_deterministic(
     if not converged:
         logger.warning("Censoring calibration did not reach tolerance; returning last iterate.")
 
-    post_check_rates: Dict[float, float] = {}
-    post_check_passed: Optional[bool] = None
+    post_check_rates: dict[float, float] = {}
+    post_check_passed: bool | None = None
 
     if post_check:
         check_seed_base = int(rng.integers(0, 2**31 - 1))
@@ -3154,8 +3257,8 @@ def _v_hat_powers(v: np.ndarray, max_power: int = 2) -> np.ndarray:
 
 def _v_hat_spline_basis_with_type(
     v: np.ndarray,
-    knots: Optional[List[float]] = None,
-) -> Tuple[np.ndarray, str, Optional[float], Optional[float]]:
+    knots: list[float] | None = None,
+) -> tuple[np.ndarray, str, float | None, float | None]:
     """Build clamped quadratic B-spline basis."""
     v = np.asarray(v, dtype=float).reshape(-1)
 
@@ -3215,19 +3318,19 @@ def _v_hat_spline_basis_with_type(
 @dataclass
 class CFBuildResult:
     df_with_cf: pd.DataFrame
-    column_names: List[str]
+    column_names: list[str]
     residuals_std: float
     residuals_mean: float = 0.0
-    basis_std_params: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    basis_std_params: dict[str, dict[str, Any]] = field(default_factory=dict)
     actual_basis: str = "linear"
-    basis_kwargs: Dict[str, Any] = field(default_factory=dict)
+    basis_kwargs: dict[str, Any] = field(default_factory=dict)
     linear_standardized: bool = True
 
 
 def _build_cf_columns(
     residuals: np.ndarray,
     v_hat_basis: str,
-    v_hat_basis_params: Optional[Dict[str, Any]],
+    v_hat_basis_params: dict[str, Any] | None,
     base_df: pd.DataFrame,
 ) -> CFBuildResult:
     """Build control-function columns from first-stage residuals."""
@@ -3241,7 +3344,7 @@ def _build_cf_columns(
         raise ValueError("residuals contain non-finite values")
 
     if v_hat_basis_params is None:
-        bp: Dict[str, Any] = {}
+        bp: dict[str, Any] = {}
     elif isinstance(v_hat_basis_params, dict):
         bp = v_hat_basis_params
     else:
@@ -3402,7 +3505,7 @@ def _build_cf_columns(
 
         # PATCH-01: Сохранить проекционную матрицу для powers basis
         proj_matrix = np.linalg.lstsq(basis_vals, basis, rcond=None)[0]
-        
+
         return CFBuildResult(
             df_with_cf=df,
             column_names=col_names,
@@ -3425,7 +3528,7 @@ def _build_cf_columns(
 # ---------------------------------------------------------------------------
 # First stage
 # ---------------------------------------------------------------------------
-def classical_first_stage_f_statistic(fitted: Any) -> Tuple[float, float]:
+def classical_first_stage_f_statistic(fitted: Any) -> tuple[float, float]:
     parameter_names = list(fitted.model.exog_names)
 
     if "Z" not in parameter_names:
@@ -3483,7 +3586,7 @@ def partial_f_statistic_for_z(fitted: Any) -> float:
         return float("nan")
 
 
-def cragg_donald_stat(fitted: Any) -> Tuple[float, float, bool]:
+def cragg_donald_stat(fitted: Any) -> tuple[float, float, bool]:
     """Cragg-Donald statistic for weak instrument detection.
     Returns:
     (statistic, critical_value_10pct, is_weak)
@@ -3537,7 +3640,7 @@ def cragg_donald_stat(fitted: Any) -> Tuple[float, float, bool]:
     return f_stat, critical_10pct, is_weak
 
 
-def robust_first_stage_hc3_stat(fitted: Any) -> Tuple[float, float]:
+def robust_first_stage_hc3_stat(fitted: Any) -> tuple[float, float]:
     robust = fitted.get_robustcov_results(cov_type="HC3")
     parameter_names = list(fitted.model.exog_names)
 
@@ -3581,7 +3684,7 @@ def robust_first_stage_hc3_stat(fitted: Any) -> Tuple[float, float]:
 def robust_first_stage_cluster_stat(
     fitted: Any,
     groups: np.ndarray,
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """
     Cluster-robust F-statistic for Z using clustered covariance.
 
@@ -3678,7 +3781,7 @@ def _build_first_stage_report(
     design: np.ndarray,
     z_variance: float,
     min_f_threshold: float,
-    cluster_groups: Optional[np.ndarray] = None,
+    cluster_groups: np.ndarray | None = None,
 ) -> FirstStageReport:
     try:
         cond_number = float(np.linalg.cond(design))
@@ -3808,7 +3911,7 @@ def fit_first_stage(
     residuals = np.asarray(fitted.resid, dtype=float)
 
     # Cluster groups (если указан cluster_col в opts)
-    cluster_groups: Optional[np.ndarray] = None
+    cluster_groups: np.ndarray | None = None
     if opts.cluster_col is not None and opts.cluster_col in model_data.columns:
         # НЕ преобразуем в str — statsmodels принимает числовые метки
         cluster_groups = model_data[opts.cluster_col].to_numpy()
@@ -3836,7 +3939,7 @@ def fit_first_stage(
 def fit_first_stage_cluster_robust(
     data: pd.DataFrame,
     cluster_col: str = "cluster_id",
-) -> Tuple[Any, Dict[str, Any]]:
+) -> tuple[Any, dict[str, Any]]:
     """
     First stage с cluster-robust стандартными ошибками.
 
@@ -3937,11 +4040,11 @@ def _check_baseline_hazard(cph: CoxPHFitter) -> None:
 
 def _fit_cox_model(
     model_data: pd.DataFrame,
-    covariate_cols: List[str],
+    covariate_cols: list[str],
     penalizer: float,
     robust: bool = True,
     check_baseline: bool = True,
-    cluster_col: Optional[str] = None,
+    cluster_col: str | None = None,
 ) -> CoxPHFitter:
     """
     Fit Cox PH model with optional cluster-robust standard errors.
@@ -4002,7 +4105,7 @@ def _fit_cox_model(
     # Небольшая защита от нестабильных tie-путей в некоторых версиях lifelines.
     df = df.sort_values(["time"], kind="mergesort").reset_index(drop=True)
 
-    fit_kwargs: Dict[str, Any] = {
+    fit_kwargs: dict[str, Any] = {
         "duration_col": "time",
         "event_col": "event",
         "show_progress": False,
@@ -4063,11 +4166,11 @@ def _fit_cox_model(
 
 def _fit_cox_model_cluster(
     model_data: pd.DataFrame,
-    covariate_cols: List[str],
+    covariate_cols: list[str],
     penalizer: float,
     robust: bool = True,
     check_baseline: bool = True,
-    cluster_col: Optional[str] = None,
+    cluster_col: str | None = None,
 ) -> CoxPHFitter:
     """
     Wrapper around _fit_cox_model that forwards cluster_col.
@@ -4121,13 +4224,13 @@ def _min_events_required_from_count(
 
 def _filter_cox_covariates(
     df: pd.DataFrame,
-    cols: List[str],
-    required: Optional[List[str]] = None,
-    event: Optional[np.ndarray] = None,
+    cols: list[str],
+    required: list[str] | None = None,
+    event: np.ndarray | None = None,
     var_floor: float = 1e-12,
     min_binary_obs: int = 10,
     min_binary_events: int = 0,
-) -> List[str]:
+) -> list[str]:
     """
     Фильтрует ковариаты до подачи в Cox / first stage.
 
@@ -4140,7 +4243,7 @@ def _filter_cox_covariates(
     - separation / мало событий в бинарных группах, если задан event.
     """
     required_set = set(required or [])
-    kept: List[str] = []
+    kept: list[str] = []
     seen: set = set()
 
     if event is None:
@@ -4178,9 +4281,7 @@ def _filter_cox_covariates(
         std_val = float(np.std(vals, ddof=0))
         if (not math.isfinite(std_val)) or std_val <= var_floor:
             if col in required_set:
-                raise ValueError(
-                    f"Required covariate '{col}' is degenerate (std <= {var_floor})"
-                )
+                raise ValueError(f"Required covariate '{col}' is degenerate (std <= {var_floor})")
             logger.warning(
                 "Covariate '%s' is degenerate (std=%.3g); dropped",
                 col,
@@ -4244,7 +4345,7 @@ def _filter_cox_covariates(
     return kept
 
 
-def compute_vif(design_matrix: np.ndarray, names: Optional[List[str]] = None) -> Dict[str, float]:
+def compute_vif(design_matrix: np.ndarray, names: list[str] | None = None) -> dict[str, float]:
     X = np.asarray(design_matrix, dtype=float)
 
     if X.shape[1] <= 1:
@@ -4257,7 +4358,7 @@ def compute_vif(design_matrix: np.ndarray, names: Optional[List[str]] = None) ->
         Xv = X
         offset = 0
 
-    vifs: Dict[str, float] = {}
+    vifs: dict[str, float] = {}
 
     for j in range(Xv.shape[1]):
         try:
@@ -4338,8 +4439,8 @@ def fit_naive_cox(
     if n_events < min_events:
         raise RuntimeError(f"Naive Cox: too few events {n_events} < required {min_events}")
 
-    attempted: List[float] = []
-    last_exc: Optional[BaseException] = None
+    attempted: list[float] = []
+    last_exc: BaseException | None = None
 
     for pen in _ALL_PENALIZERS:
         attempted.append(float(pen))
@@ -4374,7 +4475,7 @@ def fit_naive_cox(
             if max_se > opts.cox_se_threshold:
                 raise RuntimeError(f"Too-large SEs (max_se={max_se})")
 
-            warnings_list: List[str] = []
+            warnings_list: list[str] = []
 
             if pen > 0.0:
                 warnings_list.append(f"Naive Cox estimate is regularized (penalizer={pen}).")
@@ -4451,9 +4552,7 @@ def fit_reduced_form_cox(
     # Кластерная структура
     if opts.cluster_col is not None:
         if opts.cluster_col in x_cols:
-            raise ValueError(
-                f"cluster_col='{opts.cluster_col}' must NOT be in x_cols"
-            )
+            raise ValueError(f"cluster_col='{opts.cluster_col}' must NOT be in x_cols")
         if opts.cluster_col not in data.columns:
             raise ValueError(
                 f"cluster_col='{opts.cluster_col}' explicitly requested "
@@ -4482,8 +4581,8 @@ def fit_reduced_form_cox(
     if n_events < min_events:
         raise RuntimeError(f"Reduced Form Cox: too few events {n_events} < required {min_events}")
 
-    attempted_penalizers: List[float] = []
-    last_exc: Optional[BaseException] = None
+    attempted_penalizers: list[float] = []
+    last_exc: BaseException | None = None
     for pen in _ALL_PENALIZERS:
         attempted_penalizers.append(float(pen))
         try:
@@ -4515,18 +4614,16 @@ def fit_reduced_form_cox(
                 warning=None,
                 attempted_penalizers=attempted_penalizers.copy(),
             )
-            warnings_list: List[str] = []
+            warnings_list: list[str] = []
             if pen > 0.0:
-                warnings_list.append(
-                    f"Reduced Form Cox estimate is regularized (penalizer={pen})."
-                )
+                warnings_list.append(f"Reduced Form Cox estimate is regularized (penalizer={pen}).")
             warnings_list.append(
                 "Reduced-form model: PREDICTIVE only, no causal correction. "
                 "Z is included directly as a covariate; exclusion restriction "
                 "violation makes causal interpretation invalid."
             )
 
-            basis_meta: Dict[str, Any] = {
+            basis_meta: dict[str, Any] = {
                 "requested_v_hat_basis": "none",
                 "v_hat_basis": "none",
                 "v_hat_cols": [],
@@ -4749,8 +4846,8 @@ def fit_cf_cox(
     if not np.all(np.isfinite(pl_hat)):
         raise ValueError("fit_cf_cox: non-finite PL_hat")
     training_pl_hat_mean = float(np.mean(pl_hat))
-    partial_out_all_betas: Dict[str, float] = {}
-    training_x_means: Dict[str, float] = {}
+    partial_out_all_betas: dict[str, float] = {}
+    training_x_means: dict[str, float] = {}
     if x_cols:
         try:
             diag_df = model_data[x_cols].copy()
@@ -4769,8 +4866,8 @@ def fit_cf_cox(
             training_x_means = {}
 
     # Cox fit with penalizer fallback
-    attempted_penalizers: List[float] = []
-    last_exc: Optional[BaseException] = None
+    attempted_penalizers: list[float] = []
+    last_exc: BaseException | None = None
     for pen in _ALL_PENALIZERS:
         attempted_penalizers.append(float(pen))
 
@@ -4824,7 +4921,6 @@ def fit_cf_cox(
             max_se = float(np.max(np.abs(ses_all)))
 
             # Debug: check types
-            import sys
 
             if not all(np.isfinite(x) for x in [gamma_hat, naive_model_se, cf_coef, max_se]):
                 raise RuntimeError("CF Cox: non-finite estimates")
@@ -4838,7 +4934,7 @@ def fit_cf_cox(
                 attempted_penalizers=attempted_penalizers.copy(),
             )
 
-            warnings_list: List[str] = []
+            warnings_list: list[str] = []
 
             if pen > 0.0:
                 warnings_list.append(
@@ -4886,7 +4982,7 @@ def fit_cf_cox(
             except Exception:
                 pass
 
-            basis_meta: Dict[str, Any] = {
+            basis_meta: dict[str, Any] = {
                 "requested_v_hat_basis": opts.v_hat_basis,
                 "v_hat_basis": cf_cols.actual_basis,
                 "v_hat_cols": v_hat_cols,
@@ -4910,7 +5006,7 @@ def fit_cf_cox(
             # Generated regressor: v_hat (first-stage residuals) introduces
             # additional uncertainty not captured by naive SE from CoxPHFitter.
             # Bootstrap accounts for this uncertainty.
-            bootstrap_se_value: Optional[float] = None
+            bootstrap_se_value: float | None = None
             if opts.n_bootstrap > 0:
                 try:
                     logger.info(
@@ -4958,7 +5054,9 @@ def fit_cf_cox(
                             "Bootstrap SE=%.6e, naive SE=%.6e, ratio=%.2f",
                             bootstrap_se_value,
                             naive_model_se,
-                            bootstrap_se_value / naive_model_se if naive_model_se > 0 else float("inf"),
+                            bootstrap_se_value / naive_model_se
+                            if naive_model_se > 0
+                            else float("inf"),
                         )
                         # Add note about generated regressors
                         warnings_list.append(
@@ -4975,8 +5073,7 @@ def fit_cf_cox(
                         )
                 except Exception as bootstrap_exc:
                     logger.warning(
-                        "Bootstrap SE computation raised exception: %s. "
-                        "Falling back to naive SE.",
+                        "Bootstrap SE computation raised exception: %s. Falling back to naive SE.",
                         bootstrap_exc,
                     )
 
@@ -5232,7 +5329,7 @@ def interaction_lr_test(
     first_stage: FirstStageFit,
     opts: CFFitOptions,
     interaction_col: str = "x_age_hours",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     P0-3: LR test for interaction term in CF Cox model.
 
@@ -5245,7 +5342,7 @@ def interaction_lr_test(
     Both models are fit with the SAME penalizer. If penalized > 0,
     the LR p-value is NOT valid and is reported as None with a flag.
     """
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "lr_stat": None,
         "df": 1,
         "p_value": None,
@@ -5355,7 +5452,7 @@ def interaction_lr_test(
         cph_full = None
         cph_restricted = None
         used_pen = None
-        last_exc: Optional[BaseException] = None
+        last_exc: BaseException | None = None
 
         for pen in _ALL_PENALIZERS:
             try:
@@ -5667,7 +5764,7 @@ def _worker_oracle_cox(
     if n_events < min_events:
         return np.nan, f"too_few_events_oracle ({n_events})"
 
-    last_exc: Optional[BaseException] = None
+    last_exc: BaseException | None = None
 
     for pen in _ALL_PENALIZERS:
         try:
@@ -5702,7 +5799,7 @@ def bootstrap_cf_standard_error(
     n_bootstrap: int,
     seed_sequence: np.random.SeedSequence,
     config: SimulationConfig,
-    fit_opts: Optional[CFFitOptions] = None,
+    fit_opts: CFFitOptions | None = None,
 ) -> BootstrapResult:
     """Compute bootstrap SE using selected method."""
     validate_simulation_config(config)
@@ -5713,6 +5810,7 @@ def bootstrap_cf_standard_error(
     # ★ DISABLE NESTED BOOTSTRAP: workers call fit_cf_cox which would
     # otherwise re-enter bootstrap_cf_standard_error → exponential blow-up.
     import dataclasses
+
     worker_fit_opts = dataclasses.replace(fit_opts, n_bootstrap=0)
 
     try:
@@ -5741,10 +5839,10 @@ def bootstrap_cf_standard_error(
     child_seqs = seed_sequence.spawn(n_bootstrap)
     seeds = [int(ss.generate_state(1, dtype=np.uint64)[0]) for ss in child_seqs]
 
-    estimates: List[float] = []
+    estimates: list[float] = []
     failures = 0
-    rejection_reasons: List[str] = []
-    error_examples: List[str] = []
+    rejection_reasons: list[str] = []
+    error_examples: list[str] = []
 
     method = config.bootstrap_method.lower()
 
@@ -5806,7 +5904,7 @@ def bootstrap_cf_standard_error(
     success_rate = float(n_successful / n_bootstrap) if n_bootstrap > 0 else 0.0
     failure_rate = float(failures / n_bootstrap) if n_bootstrap > 0 else 1.0
 
-    reason_summary: Dict[str, int] = {}
+    reason_summary: dict[str, int] = {}
 
     for r in rejection_reasons:
         key = r.split(":")[0].strip()
@@ -5822,7 +5920,7 @@ def bootstrap_cf_standard_error(
         logger.error(
             "Bootstrap failed. Success rate: %.2f%%. Rejection reasons: %s",
             success_rate * 100,
-            reason_summary  # Shows why iterations fail (degenerate samples, OOM, etc.)
+            reason_summary,  # Shows why iterations fail (degenerate samples, OOM, etc.)
         )
         return BootstrapResult(
             bootstrap_se=None,
@@ -5875,7 +5973,7 @@ def bootstrap_cf_standard_error(
 def check_proportional_hazards(
     cph: CoxPHFitter,
     data: pd.DataFrame,
-) -> Optional[str]:
+) -> str | None:
     """
     High-level PH check using lifelines as primary diagnostic.
     Returns None if no problem detected, otherwise a string message.
@@ -5908,14 +6006,14 @@ def ph_diagnostics_report(
     data: pd.DataFrame,
     alpha: float = 0.05,
     time_transform: str = "rank",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     P0-4: Структурированный PH-отчёт на основе Schoenfeld residuals.
 
     Использует lifelines.statistics.proportional_hazard_test с fallback
     на ручное вычисление. Возвращает структурированный dict для audit trail.
     """
-    report: Dict[str, Any] = {
+    report: dict[str, Any] = {
         "method": "Schoenfeld residual test (Grambsch-Therneau)",
         "alpha": float(alpha),
         "time_transform": str(time_transform),
@@ -6173,7 +6271,7 @@ def kaplan_meier_validator(
     data: pd.DataFrame,
     time_col: str = "time",
     event_col: str = "event",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """P-12: Kaplan-Meier validator."""
     try:
         from lifelines import KaplanMeierFitter

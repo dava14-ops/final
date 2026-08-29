@@ -2714,7 +2714,7 @@ def _build_powers_basis(params: Any, raw_residuals: np.ndarray) -> Dict[str, np.
             values = projected[:, p - 1]
         else:
             values = v_safe ** p
-        
+
         values = _standardize_cf_array(name, values, std_params)
 
         if clip_powers:
@@ -3357,14 +3357,31 @@ def predict_probability(
     strict_covariates: bool = True,
 ) -> float:
     # FIX 4: Warning when bootstrap SE is disabled
+    # Check model form: in reduced_form v_hat is absent
+    model_form = str(_dict_get_normalized(
+        _get_training_meta(params), "model_form", "control_function"
+    )).lower()
+
     training_meta = getattr(params, "training_meta", {}) or {}
-    if not training_meta.get("bootstrap_se_enabled", False):
-        logger.warning(
-            "Bootstrap SE is disabled. Standard errors do not account for "
-            "first-stage uncertainty in the generated regressor (v_hat). "
-            "This leads to underestimated confidence intervals. "
-            "Enable via training_meta['bootstrap_se_enabled'] = True."
-        )
+    bootstrap_se_enabled = training_meta.get("bootstrap_se_enabled", False)
+
+    if not bootstrap_se_enabled:
+        if model_form == "reduced_form":
+            # Reduced Form: no first stage — bootstrap SE not applicable
+            logger.debug(
+                "Reduced-form model: bootstrap SE not applicable "
+                "(no first-stage generated regressor)."
+            )
+        else:
+            # Use set for deduplication (warn only once)
+            if not getattr(logger, "_bootstrap_warned", False):
+                logger.warning(
+                    "Bootstrap SE is disabled. Standard errors do not account for "
+                    "first-stage uncertainty in the generated regressor (v_hat). "
+                    "This leads to underestimated confidence intervals. "
+                    "Enable via training_meta['bootstrap_se_enabled'] = True."
+                )
+                logger._bootstrap_warned = True  # type: ignore[attr-defined]
 
     if covariates is not None and not isinstance(covariates, dict):
         raise InvalidInputError("covariates must be a dictionary or None")

@@ -212,12 +212,12 @@ def _covered_loss_lognormal(
 ) -> float:
     """
     PATCH-02: E[max(0, min(X, limit) - d)] for X ~ Lognormal(mu, sigma).
-    
+
     Uses analytical formula for LogNormal distribution:
     E[(X - d)+] = E[X·1{X>d}] - d·P(X>d)
                 = exp(μ + σ²/2) · Φ(σ - z_d) - d · Φ(-z_d)
     where z_d = (ln(d) - μ) / σ
-    
+
     For limited loss with limit L:
     E[min(X, L) - d]+ = E[(X - d)+] - E[(X - L)+]
     """
@@ -228,7 +228,7 @@ def _covered_loss_lognormal(
         if limit is not None and limit > 0:
             covered = min(covered, max(0.0, limit - deductible))
         return covered
-    
+
     try:
         from scipy.stats import norm
     except ImportError:
@@ -238,9 +238,9 @@ def _covered_loss_lognormal(
         if limit is not None and limit > 0:
             covered = min(covered, max(0.0, limit - deductible))
         return covered
-    
+
     mean_X = math.exp(mu + 0.5 * sigma**2)
-    
+
     # E[(X - d)+] for deductible d > 0
     if deductible > 0:
         z_d = (math.log(deductible) - mu) / sigma
@@ -250,14 +250,14 @@ def _covered_loss_lognormal(
         covered = partial - deductible * norm.sf(z_d)
     else:
         covered = mean_X
-    
+
     # Apply policy limit: subtract excess above limit
     if limit is not None and limit > 0 and limit > deductible:
         z_l = (math.log(limit) - mu) / sigma
         partial_l = mean_X * norm.sf(z_l - sigma)
         excess_l = partial_l - limit * norm.sf(z_l)
         covered -= max(0.0, excess_l)
-    
+
     return max(0.0, covered)
 
 
@@ -448,7 +448,7 @@ def _calculate_single_premium_validated(
     Internal calculation function.
 
     All arguments are expected to be already validated.
-    
+
     Parameters for Jensen's inequality correction (PATCH-02):
         severity_lognormal_mu: μ parameter of LogNormal severity distribution
         severity_lognormal_sigma: σ parameter of LogNormal severity distribution
@@ -618,7 +618,7 @@ def calculate_single_premium(
         gross_undiscounted = net_undiscounted * (1 + theta)
         gross_discounted   = net_discounted * (1 + theta)
         tariff             = gross_discounted / sum_insured * 100
-    
+
     Parameters
     ----------
     severity_already_covered : bool
