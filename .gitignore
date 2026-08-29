@@ -1,27 +1,4 @@
-```python
-# Compiled Python files
-*.pyc
+```
 __pycache__/
-
-# Virtual environments
-venv/
-.venv/
-.env
-.env.local
-*.env.*
-
-# IDE and editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-
-# Logs
-*.log
-
-# Build artifacts
-dist/
-build/
-*.out
+*.pyc
 ```

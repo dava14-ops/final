@@ -17,9 +17,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Tuple
 
-import logger
 import numpy as np
 import pandas as pd
+
+# ─── Инициализация логгера в самом начале (FIX) ───────────────────────
+logger = logging.getLogger("real_calculator")
 
 # FIX 7: Import severity constants early (needed by HeavyTailedSeverityFallback)
 from constants import (
@@ -93,7 +95,7 @@ except ImportError:
         "parametric_baseline.py не найден: CIF-интегрирование недоступно. "
         "Используется пропорциональная формула ω·F."
     )
-from exceptions import InvalidInputError, ModelLoadError, PredictionError
+from prediction_engine import InvalidInputError, ModelLoadError, PredictionError
 
 # ─── Фаза X: агрономический календарь ──────────────────────────────
 try:
@@ -102,7 +104,6 @@ try:
         list_crops,
         get_crop,
         estimate_season_engine_hours,
-        compute_weighted_peak_load,
         format_crop_summary,
     )
     HAS_AGRO_CALENDAR = True
@@ -496,8 +497,6 @@ from constants import (
 # ---------------------------------------------------------------------------
 # PeakLoad теперь в [0, 1] диапазоне. TUM данные уже в этом диапазоне.
 # Конвертация не нужна.
-
-logger = logging.getLogger("real_calculator")
 
 # Model provenance guards (weather campaign validation)
 try:
@@ -2948,17 +2947,10 @@ def collect_user_inputs(
             brand_name = cfg.extended.get("brand", "МТЗ-82")
             tractor = _map_brand_to_tractor(brand_name)
             
-            # Собрать пики операций из TUM / OPERATION_INFO
-            operation_peaks = {}
-            for op_key, op_info in TUM_OPERATIONS.items():
-                operation_peaks[op_key] = op_info.get("peak_load_mean", 0.50)
-            for op_key, op_info in OPERATION_INFO.items():
-                if op_key not in operation_peaks:
-                    operation_peaks[op_key] = op_info.get("peak_load_mean", 0.50)
-            
             # Вычислить средневзвешенный пик и суммарные моточасы
-            weighted_peak, total_hours = compute_weighted_peak_load(
-                crop_key, crop_area, operation_peaks
+            # (estimate_season_engine_hours уже использует OPERATION_INFO внутри себя)
+            total_hours, weighted_peak = estimate_season_engine_hours(
+                crop_key, crop_area, tractor=tractor, k_ob=1.0
             )
             
             # Переопределить пики и горизонт
