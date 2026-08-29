@@ -46,19 +46,22 @@ def compute_lognormal_variance(mu: float, sigma: float) -> float:
     return (math.exp(sigma**2) - 1.0) * math.exp(2.0 * mu + sigma**2)
 
 
-
 # Fix for Windows console encoding.
-try:
-    import io
+# Fix for Windows console encoding.
+# FIX: Отключаем обёртывание, если запущен pytest.
+# Иначе ломается capture-механизм PyCharm/pytest (ValueError: I/O operation on closed file).
+if "pytest" not in sys.modules:
+    try:
+        import io
 
-    if hasattr(sys.stdout, "buffer"):
-        sys.stdout = io.TextIOWrapper(
-            sys.stdout.buffer,
-            encoding="utf-8",
-            errors="backslashreplace",
-        )
-except (AttributeError, ValueError, OSError):
-    pass
+        if hasattr(sys.stdout, "buffer"):
+            sys.stdout = io.TextIOWrapper(
+                sys.stdout.buffer,
+                encoding="utf-8",
+                errors="backslashreplace",
+            )
+    except (AttributeError, ValueError, OSError):
+        pass
 
 # ---------------------------------------------------------------------------
 # Project imports
@@ -106,6 +109,7 @@ try:
         estimate_season_engine_hours,
         format_crop_summary,
     )
+
     HAS_AGRO_CALENDAR = True
 except ImportError:
     HAS_AGRO_CALENDAR = False
@@ -114,6 +118,7 @@ except ImportError:
 # Нормативы мч/га по тракторам (Приложение Б)
 try:
     from agro_norms import get_engine_hours_per_ha, Tractor
+
     HAS_AGRO_NORMS = True
 except ImportError:
     HAS_AGRO_NORMS = False
@@ -1307,12 +1312,12 @@ def ask(prompt: str, default: str) -> str:
 def ask_crop_selection(extended: dict[str, Any]) -> Tuple[str, float]:
     """
     Запрос выбора культуры и площади.
-    
+
     Parameters
     ----------
     extended : dict
         Расширенные параметры (нужны для определения трактора).
-    
+
     Returns
     -------
     Tuple[str, float]
@@ -1320,11 +1325,11 @@ def ask_crop_selection(extended: dict[str, Any]) -> Tuple[str, float]:
     """
     if not HAS_AGRO_CALENDAR:
         return "", 0.0
-    
+
     print("\n" + "=" * 60)
     print("РЕЖИМ КУЛЬТУРЫ (агрономический календарь)")
     print("=" * 60)
-    
+
     crop_keys = list_crops()
     for i, key in enumerate(crop_keys, 1):
         crop = CROP_CATALOG[key]
@@ -1334,42 +1339,40 @@ def ask_crop_selection(extended: dict[str, Any]) -> Tuple[str, float]:
             f"{crop.region_preference}"
         )
     print(f"  {len(crop_keys) + 1:2d}) Другое / универсальный режим (одна операция)")
-    
+
     choice = input(f"Выбор [1-{len(crop_keys) + 1}]: ").strip()
-    
+
     try:
         idx = int(choice) - 1
         if 0 <= idx < len(crop_keys):
             crop_key = crop_keys[idx]
-            area_ha = _ask_non_negative(
-                "Площадь под культуру (га)", 100.0
-            )
+            area_ha = _ask_non_negative("Площадь под культуру (га)", 100.0)
             if area_ha <= 0.0:
                 logger.warning("Площадь <= 0. Универсальный режим.")
                 return "", 0.0
             return crop_key, area_ha
     except ValueError:
         pass
-    
+
     return "", 0.0
 
 
 def _map_brand_to_tractor(brand_name: str) -> str:
     """
     Сопоставить марку трактора из калькулятора с ключом в agro_norms.
-    
+
     Parameters
     ----------
     brand_name : str
         Название бренда из collect_extended_parameters().
-    
+
     Returns
     -------
     str
         Ключ трактора для agro_norms.get_engine_hours_per_ha().
     """
     brand_lower = brand_name.strip().lower()
-    
+
     # Маппинг брендов из BRAND_MAP на ключи в agro_norms
     mapping = {
         "мтз-82": "МТЗ-82",
@@ -1380,17 +1383,17 @@ def _map_brand_to_tractor(brand_name: str) -> str:
         "к-744р": "К-744Р1",
         "к-744р1": "К-744Р1",
         "new holland": "К-744Р1",  # Тяжёлый трактор → К-744Р1
-        "versatile": "К-744Р1",     # Тяжёлый трактор → К-744Р1
+        "versatile": "К-744Р1",  # Тяжёлый трактор → К-744Р1
         "дт-75": "ДТ-75М",
         "дт75": "ДТ-75М",
         "т-150к": "Т-150К",
         "т-150": "Т-150К",
     }
-    
+
     for key, tractor in mapping.items():
         if key in brand_lower:
             return tractor
-    
+
     # Fallback: МТЗ-82 (самый распространённый)
     logger.warning(
         "Бренд '%s' не найден в маппинге тракторов. Используется МТЗ-82.",
@@ -2930,35 +2933,35 @@ def collect_user_inputs(
 
     cfg.peaks = get_peakload_choice(params)
     cfg.extended = collect_extended_parameters()
-    
+
     # ─── Фаза X: режим культуры ──────────────────────────────────
     cfg.crop_key = ""
     cfg.crop_area_ha = 0.0
     cfg.crop_weighted_peak = None
     cfg.crop_total_hours = None
-    
+
     if HAS_AGRO_CALENDAR:
         crop_key, crop_area = ask_crop_selection(cfg.extended)
         if crop_key:
             cfg.crop_key = crop_key
             cfg.crop_area_ha = crop_area
-            
+
             # Определить трактор из расширенных параметров
             brand_name = cfg.extended.get("brand", "МТЗ-82")
             tractor = _map_brand_to_tractor(brand_name)
-            
+
             # Вычислить средневзвешенный пик и суммарные моточасы
             # (estimate_season_engine_hours уже использует OPERATION_INFO внутри себя)
             total_hours, weighted_peak = estimate_season_engine_hours(
                 crop_key, crop_area, tractor=tractor, k_ob=1.0
             )
-            
+
             # Переопределить пики и горизонт
             cfg.peaks = [weighted_peak]
             cfg.horizon = total_hours
             cfg.crop_weighted_peak = weighted_peak
             cfg.crop_total_hours = total_hours
-            
+
             # Показать план работ
             operation_names_ru = {}
             for op_key in TUM_OPERATIONS:
@@ -2966,37 +2969,45 @@ def collect_user_inputs(
             for op_key in OPERATION_INFO:
                 if op_key not in operation_names_ru:
                     operation_names_ru[op_key] = OPERATION_INFO[op_key].get("name_ru", op_key)
-            
-            print("\n" + format_crop_summary(
-                crop_key, crop_area, operation_peaks, operation_names_ru
-            ))
-            
+
+            print(
+                "\n" + format_crop_summary(crop_key, crop_area, cfg.peaks, operation_names_ru)
+            )
+
             # ─── Проверка горизонта калибровки ────────────────────
             calib_horizon = cfg.calib_horizon_value or DEFAULT_HORIZON_ENGINE_HOURS
             if total_hours > calib_horizon:
-                print(f"\n⚠️  Суммарные моточасы ({total_hours:.0f}) превышают "
-                      f"калибровочный горизонт ({calib_horizon:.0f}).")
-                
+                print(
+                    f"\n⚠️  Суммарные моточасы ({total_hours:.0f}) превышают "
+                    f"калибровочный горизонт ({calib_horizon:.0f})."
+                )
+
                 # Проверить наличие параметрического базового риска
                 baseline_spec = getattr(params, "baseline_spec", None)
                 baseline_family = "breslow"
                 if isinstance(baseline_spec, dict):
                     baseline_family = str(baseline_spec.get("family", "breslow")).lower()
-                
+
                 if baseline_family in ("weibull", "gompertz", "exponential"):
-                    print(f"   ✅ Параметрический базовый риск ({baseline_family}) "
-                          f"позволяет экстраполяцию.")
+                    print(
+                        f"   ✅ Параметрический базовый риск ({baseline_family}) "
+                        f"позволяет экстраполяцию."
+                    )
                 else:
                     print("   ❌ Базовый риск Бреслоу НЕ позволяет экстраполяцию.")
                     print("   Переобучите модель с параметрическим базовым риском:")
                     print("   python train_model.py → параметрическая подгонка → weibull")
-            
+
             logger.info(
                 "Режим культуры: %s, площадь %.0f га, трактор %s, "
                 "средневзвешенный пик %.4f, суммарные моточасы %.0f",
-                crop_key, crop_area, tractor, weighted_peak, total_hours,
+                crop_key,
+                crop_area,
+                tractor,
+                weighted_peak,
+                total_hours,
             )
-    
+
     cfg.covariate_values, cfg.raw_covariate_names = collect_model_covariates(
         params, cfg.extended, dgp_data
     )
