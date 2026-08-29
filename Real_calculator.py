@@ -1339,7 +1339,7 @@ def ask_crop_selection(extended: dict[str, Any]) -> Tuple[str, float]:
         crop = CROP_CATALOG[key]
         print(
             f"  {i:2d}) {crop.crop_name_ru:40s} | "
-            f"{crop.total_season_hours_per_ha:.2f} мч/га | "
+            f"{crop.n_tractor_operations} тракторных оп. | "
             f"{crop.region_preference}"
         )
     print(f"  {len(crop_keys) + 1:2d}) Другое / универсальный режим (одна операция)")
