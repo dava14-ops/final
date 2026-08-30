@@ -1823,7 +1823,9 @@ def _brand_dummy_key(name: str) -> str | None:
 # ---------------------------------------------------------------------------
 # Extended parameters
 # ---------------------------------------------------------------------------
-def collect_extended_parameters() -> dict[str, Any]:
+def collect_extended_parameters(
+    skip_operation_selection: bool = False,
+) -> dict[str, Any]:
     params: dict[str, Any] = {}
     brand_options = [
         "New Holland T9.505",
@@ -1912,7 +1914,13 @@ def collect_extended_parameters() -> dict[str, Any]:
     # В режиме культуры операции определяются агрокалендарём,
     # поэтому выбор операции здесь пропускается.
     # Сезонный фактор для стоимости простоя всё равно нужен.
-    if TUM_OPERATIONS:
+    if skip_operation_selection:
+        # Режим культуры: операция не выбирается.
+        # Сезонный фактор для стоимости простоя вычисляется позже
+        # как средневзвешенный по всем операциям агрокалендаря.
+        params["season"] = None
+        params["downtime_hour_cost"] = BASE_DOWNTIME_COST
+    elif TUM_OPERATIONS:
         # Временно сохраняем season=None, чтобы не ломать остальной код.
         # Если культура будет выбрана позже, сезон определится из агрокалендаря.
         params["season"] = None
@@ -2978,19 +2986,24 @@ def collect_user_inputs(
     cfg.calib_horizon_value = _as_optional_float(calib_horizon_raw)
 
     cfg.peaks = get_peakload_choice(params)
-    cfg.extended = collect_extended_parameters()
 
-    # ─── Фаза X: режим культуры ──────────────────────────────────
+    # ─── Фаза X: режим культуры (СНАЧАЛА, до выбора операции) ────
     cfg.crop_key = ""
     cfg.crop_area_ha = 0.0
     cfg.crop_weighted_peak = None
     cfg.crop_total_hours = None
 
     if HAS_AGRO_CALENDAR:
-        crop_key, crop_area = ask_crop_selection(cfg.extended)
+        crop_key, crop_area = ask_crop_selection({})
         if crop_key:
             cfg.crop_key = crop_key
             cfg.crop_area_ha = crop_area
+
+    # Передаём флаг: если режим культуры — пропуск выбора операции
+    skip_op = bool(cfg.crop_key) if HAS_AGRO_CALENDAR else False
+    cfg.extended = collect_extended_parameters(skip_operation_selection=skip_op)
+
+    if HAS_AGRO_CALENDAR and cfg.crop_key:
 
             # Определить трактор из расширенных параметров
             brand_name = cfg.extended.get("brand", "МТЗ-82")
@@ -3093,6 +3106,35 @@ def collect_user_inputs(
                 weighted_peak,
                 total_hours,
             )
+
+            # ─── Сезонный фактор для стоимости простоя ─────────────────────
+            # В режиме культуры вычисляем средневзвешенный сезонный фактор
+            # по всем операциям агрокалендаря.
+            if TUM_OPERATIONS:
+                crop_obj = get_crop(crop_key)
+                if crop_obj is not None:
+                    weighted_sf_sum = 0.0
+                    weighted_hours_sum = 0.0
+                    for op in crop_obj.tractor_operations:
+                        op_info = TUM_OPERATIONS.get(op.operation_key, {})
+                        sf = op_info.get("season_factor", 1.0)
+                        hours_per_ha, _ = get_engine_hours_per_ha(
+                            op.doc_operation, tractor, cfg.k_ob
+                        ) if HAS_AGRO_NORMS else (0.15, 7.0)
+                        op_hours = hours_per_ha * op.passes * crop_area
+                        weighted_sf_sum += sf * op_hours
+                        weighted_hours_sum += op_hours
+                    if weighted_hours_sum > 0:
+                        avg_sf = weighted_sf_sum / weighted_hours_sum
+                    else:
+                        avg_sf = 1.0
+                    cfg.extended["season"] = f"{crop_obj.crop_name_ru} (агрокалендарь)"
+                    cfg.extended["downtime_hour_cost"] = BASE_DOWNTIME_COST * avg_sf
+                    logger.info(
+                        "Средневзвешенный сезонный фактор для '%s': %.2f",
+                        crop_obj.crop_name_ru,
+                        avg_sf,
+                    )
 
     cfg.covariate_values, cfg.raw_covariate_names = collect_model_covariates(
         params, cfg.extended, dgp_data
