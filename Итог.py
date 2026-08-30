@@ -1795,6 +1795,8 @@ def load_real_covariates_for_simulation(
     campaign: str = "sowing",
     jitter_std: float = 0.05,
     z_scale_factor: float = 2.0,
+    instrument_source: str = "weather_real",
+    price_instrument_path: str | None = None,
 ) -> dict[str, np.ndarray]:
     """
     Загрузить реальные weather/soil/rainfall данные и сэмплировать n значений.
@@ -1809,48 +1811,85 @@ def load_real_covariates_for_simulation(
     """
     result: dict[str, np.ndarray] = {}
 
-    # ─── Загрузка rainfall anomaly для Z ────────────────────────────
-    rain_path = Path("data/processed/weather/rainfall_anomaly.csv")
-    if rain_path.exists():
+    # ─── НОВОЕ: если инструмент — ценовой Bartik ───────────────────
+    if instrument_source == "price_bartik" and price_instrument_path is not None:
         try:
-            rdf = pd.read_csv(rain_path, encoding="utf-8")
-            rdf = rdf[rdf["campaign"] == campaign]
+            df_instrument = load_price_bartik_instrument(price_instrument_path)
 
-            if len(rdf) >= 5 and "rainfall_anomaly" in rdf.columns:
-                rain_anomaly = (
-                    pd.to_numeric(rdf["rainfall_anomaly"], errors="coerce").dropna().values
-                )
-                n_clusters = len(rain_anomaly)
+            # Для симуляции: случайно выбираем n записей из инструмента
+            n_available = len(df_instrument)
+            if n_available == 0:
+                raise ValueError("Ценовой инструмент пуст")
 
-                # СТРУКТУРНАЯ выборка: каждый трактор → случайный кластер
-                cluster_indices = rng.integers(0, n_clusters, size=n)
+            # Случайная выборка n записей (с возвращением)
+            indices = rng.choice(n_available, size=n, replace=True)
+            z_values = df_instrument["z_standardized"].iloc[indices].values.astype(float)
 
-                # Z для каждого трактора = Z его кластера
-                z_raw = rain_anomaly[cluster_indices]
+            # Стандартизация
+            z_mean = z_values.mean()
+            z_std = z_values.std(ddof=1)
+            if z_std > 1e-12:
+                z_values = (z_values - z_mean) / z_std
 
-                # Стандартизация Z (глобальная, не внутри кластера)
-                z_mean = float(rain_anomaly.mean())
-                z_std = float(rain_anomaly.std(ddof=1))
-                if z_std < 1e-9:
-                    z_std = 1.0
+            result["Z"] = z_values
+            # Каждый трактор получает уникальное значение Z (не кластерный)
+            result["cluster_indices"] = np.arange(n)
 
-                result["Z"] = (z_raw - z_mean) / z_std * z_scale_factor
-                # НЕ добавляем jitter к Z — он должен быть cluster-level
+            logger.info(
+                "Z = ценовой инструмент Bartik: mean=%.4f, std=%.4f, n=%d",
+                z_values.mean(), z_values.std(), n,
+            )
 
-                result["cluster_indices"] = cluster_indices  # ← ВАЖНО!
-
-                logger.info(
-                    "Z = rainfall anomaly (NASA POWER): "
-                    "mean=%.2f, std=%.2f, n_clusters=%d, n_tractors=%d",
-                    z_mean,
-                    z_std,
-                    n_clusters,
-                    n,
-                )
-            else:
-                raise ValueError("Недостаточно данных в rainfall_anomaly.csv")
         except Exception as exc:
-            logger.warning("Не удалось загрузить rainfall anomaly: %s", exc)
+            logger.warning(
+                "Не удалось загрузить ценовой инструмент: %s. Fallback на weather.",
+                exc,
+            )
+            instrument_source = "weather_real"
+
+    # ─── Загрузка rainfall anomaly для Z ────────────────────────────
+    if instrument_source in ("weather_real", "weather") or "Z" not in result:
+        rain_path = Path("data/processed/weather/rainfall_anomaly.csv")
+        if rain_path.exists():
+            try:
+                rdf = pd.read_csv(rain_path, encoding="utf-8")
+                rdf = rdf[rdf["campaign"] == campaign]
+
+                if len(rdf) >= 5 and "rainfall_anomaly" in rdf.columns:
+                    rain_anomaly = (
+                        pd.to_numeric(rdf["rainfall_anomaly"], errors="coerce").dropna().values
+                    )
+                    n_clusters = len(rain_anomaly)
+
+                    # СТРУКТУРНАЯ выборка: каждый трактор → случайный кластер
+                    cluster_indices = rng.integers(0, n_clusters, size=n)
+
+                    # Z для каждого трактора = Z его кластера
+                    z_raw = rain_anomaly[cluster_indices]
+
+                    # Стандартизация Z (глобальная, не внутри кластера)
+                    z_mean = float(rain_anomaly.mean())
+                    z_std = float(rain_anomaly.std(ddof=1))
+                    if z_std < 1e-9:
+                        z_std = 1.0
+
+                    result["Z"] = (z_raw - z_mean) / z_std * z_scale_factor
+                    # НЕ добавляем jitter к Z — он должен быть cluster-level
+
+                    result["cluster_indices"] = cluster_indices  # ← ВАЖНО!
+
+                    logger.info(
+                        "Z = rainfall anomaly (NASA POWER): "
+                        "mean=%.2f, std=%.2f, n_clusters=%d, n_tractors=%d",
+                        z_mean,
+                        z_std,
+                        n_clusters,
+                        n,
+                    )
+                else:
+                    raise ValueError("Недостаточно данных в rainfall_anomaly.csv")
+            except Exception as exc:
+                logger.warning("Не удалось загрузить rainfall anomaly: %s", exc)
 
     # Fallback для Z
     if "Z" not in result:
@@ -2254,6 +2293,8 @@ def generate_data(
             campaign=getattr(dgp, "weather_campaign", "sowing"),
             jitter_std=getattr(dgp, "jitter_std", 0.05),
             z_scale_factor=getattr(dgp, "z_scale_factor", 2.0),
+            instrument_source=getattr(dgp, "instrument_source", "weather_real"),
+            price_instrument_path=getattr(dgp, "price_instrument_path", None),
         )
         # real_covs уже содержит numpy arrays, не вызываем .to_numpy()
         z_base = np.asarray(real_covs["Z"], dtype=float)

@@ -1054,6 +1054,7 @@ def generate_data_compat(
     instrument_strength: Optional[float] = None,
     instrument_source: str = "normal",
     contamination_probability: float = 1.0,
+    price_instrument_path: str | None = None,
 ) -> pd.DataFrame:
     required_kwargs = {
         "n": n,
@@ -1067,6 +1068,7 @@ def generate_data_compat(
         "instrument_strength": instrument_strength,
         "instrument_source": instrument_source,
         "contamination_probability": contamination_probability,
+        "price_instrument_path": price_instrument_path,
     }
     return _call_with_supported_kwargs(
         generate_data,
@@ -1901,7 +1903,9 @@ def generate_and_transform_data(
     do_center_only: bool,
     instrument_strength: Optional[float] = None,
     instrument_source: str = "normal",
+    price_instrument_path: str | None = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Any]]:
+    """Генерация данных + трансформация."""
     data = generate_data_compat(
         n=n,
         contamination=contamination,
@@ -1912,6 +1916,7 @@ def generate_and_transform_data(
         contamination_probability=contamination_probability,
         instrument_strength=instrument_strength,
         instrument_source=instrument_source,
+        price_instrument_path=price_instrument_path,
     )
     validate_dataframe(data)
 
@@ -3107,24 +3112,59 @@ def collect_training_config() -> TrainingConfig:
         print("=" * 70)
         print("РЕЖИМ: ГИБРИДНЫЙ (DGP + реальные weather/soil)")
         print("=" * 70)
-        print("Структурные данные генерируются через DGP (γ > 0 гарантирован).")
-        print("Ковариаты x_climate, x_soil и инструмент Z берутся из")
-        print("реальных спутниковых данных NASA POWER / GLDAS-2.1.")
-        print("=" * 70)
-
-        # Проверяем наличие файлов
+        
+        # ─── НОВОЕ: проверка источника инструмента ─────────────────────
+        if instrument_source == "price_bartik":
+            print("⚠️ ВНИМАНИЕ: В гибридном режиме с инструментом 'price_bartik':")
+            print("   - Z берётся из ценового инструмента (не из погодных данных)")
+            print("   - x_climate, x_soil берутся из реальных спутниковых данных")
+            print("   - Регионы тракторов маппятся на регионы из инструмента")
+            print()
+            
+            # Проверяем наличие файла ценового инструмента
+            price_path = Path(price_instrument_path)
+            if not price_path.exists():
+                logger.warning(
+                    "Файл ценового инструмента не найден: %s. "
+                    "Переключаюсь на weather_real.",
+                    price_instrument_path,
+                )
+                instrument_source = "weather_real"
+            else:
+                # Загружаем ценовой инструмент для валидации
+                try:
+                    from Итог import load_price_bartik_instrument
+                    df_price_z = load_price_bartik_instrument(str(price_path))
+                    logger.info(
+                        "Ценовой инструмент Bartik валидирован: %d записей, %d регионов",
+                        len(df_price_z),
+                        df_price_z["region_name"].nunique(),
+                    )
+                except Exception as exc:
+                    logger.error("Ошибка загрузки ценового инструмента: %s", exc)
+                    instrument_source = "weather_real"
+                    logger.warning("Переключаюсь на weather_real")
+        
+        # Проверяем наличие файлов погодных данных (для x_climate, x_soil)
         weather_path = Path("data/processed/weather/weather_windows.csv")
         soil_path = Path("data/processed/soil/soil_windows.csv")
-
-        if weather_path.exists():
-            logger.info("✅ weather_windows.csv найден")
+        rain_path = Path("data/processed/weather/rainfall_anomaly.csv")
+        
+        if not weather_path.exists() or not soil_path.exists():
+            logger.warning("weather_windows.csv или soil_windows.csv не найдены.")
+            # ... существующая логика ...
+        
+        # ─── НОВОЕ: для price_bartik не нужен rainfall_anomaly ─────────
+        if instrument_source == "price_bartik":
+            print("   Инструмент Z: ценовой Bartik (shift-share IV)")
+            print("   x_climate: working_days из NASA POWER")
+            print("   x_soil: soil moisture из GLDAS-2.1")
         else:
-            logger.warning("⚠️ weather_windows.csv не найден, будет синтетический fallback")
-
-        if soil_path.exists():
-            logger.info("✅ soil_windows.csv найден")
-        else:
-            logger.warning("⚠️ soil_windows.csv не найден, будет синтетический fallback")
+            print("Структурные данные генерируются через DGP (γ > 0 гарантирован).")
+            print("Ковариаты x_climate, x_soil и инструмент Z берутся из")
+            print("реальных спутниковых данных NASA POWER / GLDAS-2.1.")
+        
+        print("=" * 70)
 
     if use_claims:
         # Проверяем доступность claims
@@ -3776,6 +3816,8 @@ def build_dgp_from_config(cfg: TrainingConfig, use_hybrid: bool = False) -> DGPP
             "weather_campaign": cfg.weather_campaign,
             "soil_source": cfg.soil_source,
             "use_real_covariates": use_hybrid,
+            "instrument_source": getattr(cfg, "instrument_source", "weather_real"),
+            "price_instrument_path": getattr(cfg, "price_instrument_path", None),
         }
     )
 
