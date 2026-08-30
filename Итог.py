@@ -4011,13 +4011,6 @@ def robust_first_stage_hc3_stat(fitted: Any) -> tuple[float, float]:
 
         return float(f_val), float(p_val)
 
-    except Exception:  # noqa: BLE001
-        tr = robust.f_test(R)
-        f_val = _scalar_from_array(tr.fvalue)
-        p_val = _scalar_from_array(tr.pvalue)
-
-        return f_val, p_val
-
 
 def robust_first_stage_cluster_stat(
     fitted: Any,

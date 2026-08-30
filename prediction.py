@@ -204,29 +204,31 @@ MAX_BASELINE_H = 700.0
 PEAK_RANGE_TOLERANCE = 5.0
 
 # ---------------------------------------------------------------------------
-# ★ FIX 4.1: Унификация prediction API
-# prediction.py больше НЕ дублирует логику prediction_engine.py.
-# Все функции стандартизации, разрешения ковариат и предсказания
-# делегируются prediction_engine как единственному источнику истины.
+# ВАЖНО: prediction.py и prediction_engine.py решают разные задачи и
+# сознательно НЕ используют общую реализацию для predict_first_stage /
+# baseline-hazard:
+#
+#   - prediction.py    — training-time bootstrap CI API. Работает
+#     напрямую с только что подогнанными объектами statsmodels/lifelines
+#     (fitted_first_stage, CoxPHFitter) внутри параллельного bootstrap-цикла.
+#   - prediction_engine.py — serving-time движок. Работает с уже
+#     сериализованным ModelParameters (dict-поля first_stage, cox,
+#     baseline_cumulative_hazard и т.д.), без доступа к самим fitted-объектам.
+#
+# Раньше здесь был импорт функций/классов из prediction_engine с расчётом
+# на "делегирование", но ни один из них фактически не вызывался — сигнатуры
+# несовместимы (см. ниже), и импорт молча висел мёртвым грузом. Он удалён,
+# чтобы код не утверждал то, чего не делает.
+#
+# TODO(train-serve parity): при необходимости реального единого источника
+# истины для этой логики нужен отдельный адаптер, который на каждой
+# bootstrap-итерации строит ModelParameters из fitted_first_stage/CoxPHFitter
+# (или наоборот — прогоняет serving-логику через уже подогнанные объекты).
+# Это отдельная задача, а не однострочная замена вызовов:
+#   predict_first_stage(template, fitted_first_stage, covariates)             — здесь
+#   prediction_engine.predict_first_stage(params: ModelParameters, ...)       — там
+# принимают несовместимые типы первого аргумента.
 # ---------------------------------------------------------------------------
-# Импортируем из prediction_engine — это единственный источник истины.
-# Локальные копии X_STANDARDIZATION, _RAW_TO_STD, X_COLS удалены
-# для предотвращения train-serve skew.
-from prediction_engine import (
-    ModelParameters,
-    validate_model as _validate_model_engine,
-    transform_peak as _transform_peak_engine,
-    baseline_cumulative_hazard as _baseline_cumulative_hazard_engine,
-    predict_first_stage as _predict_first_stage_engine,
-    compute_pl_hat_exog as _compute_pl_hat_exog_engine,
-    InvalidInputError as _PredictionEngineInvalidInputError,
-    ModelValidationError as _PredictionEngineModelValidationError,
-)
-
-# Алиасы для обратной совместимости
-X_STANDARDIZATION = {}  # Заменён на prediction_engine._get_x_standardization_table()
-_RAW_TO_STD = {}  # Заменён на prediction_engine._get_raw_aliases()
-X_COLS = []  # Заменён на prediction_engine._resolve_covariate_value()
 
 
 # ---------------------------------------------------------------------------
