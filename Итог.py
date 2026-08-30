@@ -6385,9 +6385,9 @@ def ph_diagnostics_report(
         report["error"] = "No covariates in fitted model"
         return report
 
-    # ★ НОВОЕ: вычисляем число тестов ДО цикла для коррекции Бонферрони
+    # ★ НОВОЕ: вычисляем число тестов для информации (Бонферрони не применяется для reject)
     n_covariates = len(covariates)
-    alpha_corrected = alpha / max(n_covariates, 1)  # Бонферрони
+    alpha_corrected = alpha / max(n_covariates, 1)  # Бонферрони (информационное)
     report["alpha_corrected"] = alpha_corrected
     report["n_tests"] = n_covariates
 
@@ -6464,8 +6464,8 @@ def ph_diagnostics_report(
                         }
                         continue
 
-                    # ★ НОВОЕ: используем скорректированный alpha (Бонферрони)
-                    reject = bool(p_value < alpha_corrected)
+                    # ★ НОВОЕ: используем исходный alpha (Бонферрони не применяется для reject)
+                    reject = bool(p_value < alpha)
                     report["variables"][cov_name] = {
                         "test_statistic": test_stat,
                         "p_value": p_value,
@@ -6567,7 +6567,7 @@ def ph_diagnostics_report(
                 }
                 continue
 
-            reject = bool(p_value < alpha_corrected)
+            reject = bool(p_value < alpha)
             report["variables"][cov] = {
                 "test_statistic": float(test_stat),
                 "p_value": float(p_value),
@@ -6600,39 +6600,41 @@ def ph_diagnostics_report(
             "reject_at_alpha": bool(global_p < alpha),
         }
 
-    # ─── Определение общего статуса с учётом приоритета переменных ───
-    # ★ НОВОЕ: проверка целевых переменных отдельно
-    PRIMARY_COVARIATES = {"PeakLoad", "v_hat"}
+    # ─── Определение общего статуса (честная версия) ───────────────
+    PRIMARY_COVARIATES = {"peakload", "v_hat"}
+
     primary_violations = [
         v for v in report["violations"]
-        if any(v.lower().startswith(p.lower()) for p in PRIMARY_COVARIATES)
+        if v.lower() in PRIMARY_COVARIATES
     ]
     report["primary_covariates_ph_ok"] = len(primary_violations) == 0
 
-    # Определяем статус с учётом глобального теста и первичных ковариат
     global_test = report.get("global_test")
-    if global_test is not None:
-        global_pass = not global_test.get("reject_at_alpha", False)
-    else:
-        global_pass = True
+    global_reject = (
+        global_test.get("reject_at_alpha", False)
+        if global_test is not None
+        else False
+    )
 
     if primary_violations:
-        # Критическое нарушение для целевых переменных
+        # Критично: целевые переменные нарушают PH
         report["status"] = "FAIL"
         report["error"] = (
             f"PRIMARY covariates violate PH: {primary_violations}. "
             f"Model specification must be revised."
         )
-    elif report["violations"] and not global_pass:
-        # Второстепенные нарушения + глобальный тест не проходит
+    elif report["violations"] and global_reject:
+        # Глобальный тест тоже не проходит
         report["status"] = "WARN"
-    elif report["violations"] and global_pass:
-        # Второстепенные нарушения при прохождении глобального теста
+    elif report["violations"] and not global_reject:
+        # Индивидуальные нарушения второстепенных ковариат,
+        # но глобальный тест проходит и целевые переменные в порядке.
+        # Это НЕ означает, что модель сломана.
         report["status"] = "PASS_WITH_NOTES"
         report["note"] = (
-            f"Individual PH violations for {report['violations']} "
-            f"(Bonferroni α={alpha_corrected:.4f}), but global test "
-            f"passes (p={global_test.get('p_value', float('nan')):.4f}). "
+            f"Individual PH violations for secondary covariates "
+            f"{report['violations']} (p < {alpha}). "
+            f"Global test passes (p={global_test.get('p_value', 'N/A'):.4f}). "
             f"Primary covariates (PeakLoad, v_hat) satisfy PH."
         )
     else:
