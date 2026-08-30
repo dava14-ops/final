@@ -5105,7 +5105,11 @@ def main() -> int:
         print("Первая стадия на литературных claims")
         print("-" * 70)
 
-        fitted_fs, resid, fs_names, fs_params, iv_diagnostics = run_first_stage_on_claims(data_mod)
+        cluster_col = "cluster_id" if "cluster_id" in data_mod.columns else None
+
+        fitted_fs, resid, fs_names, fs_params, iv_diagnostics = run_first_stage_on_claims(
+            data_mod, cluster_col=cluster_col
+        )
         print(f"F-statistic: {iv_diagnostics['f_statistic']:.2f}")
         print(f"Partial R²: {iv_diagnostics['partial_r2']:.4f}")
         print(f"Instrument adequate: {iv_diagnostics['instrument_adequate']}")
@@ -5127,6 +5131,7 @@ def main() -> int:
             fitted_fs,
             cfg.v_hat_basis,
             cfg.v_hat_basis_params,
+            cluster_col=cluster_col,
         )
 
         # Извлечь результаты

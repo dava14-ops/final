@@ -2802,19 +2802,8 @@ def compute_full_details(
     if engine_probability is not None:
         # Используем вероятность из engine как authoritative
         probability = engine_probability
-        # Сравниваем с ручным расчётом для диагностики
-        manual_prob = -math.expm1(-cumulative_hazard)
-        manual_prob = float(max(0.0, min(1.0, manual_prob)))
-        prob_diff = abs(probability - manual_prob)
-        if prob_diff > 1e-6:
-            logger.warning(
-                "Расхождение probability: engine=%.6f, manual=%.6f, diff=%.2e. Используем engine.",
-                probability,
-                manual_prob,
-                prob_diff,
-            )
     else:
-        # Fallback
+        # Fallback на ручной расчёт только если engine не справился
         probability = -math.expm1(-cumulative_hazard)
         if not math.isfinite(probability):
             raise PredictionError("Probability is not finite")
