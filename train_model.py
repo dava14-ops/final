@@ -402,6 +402,9 @@ class TrainingConfig:
     instrument_source: str = "normal"  # normal | weather | weather_real
     weather_campaign: str = "sowing"  # sowing | harvest
 
+    # ─── НОВОЕ ПОЛЕ: путь к ценовому инструменту Bartik ───────────
+    price_instrument_path: str = "instrument_z_bartik.csv"
+
     # Soil source (Фаза 6.6)
     soil_source: str = "synthetic"  # synthetic | claims | soil_real
 
@@ -3543,66 +3546,119 @@ def collect_training_config() -> TrainingConfig:
         cfg.v_hat_basis_params = {}
 
     # ─── Фаза 6.6: выбор источника инструмента ─────────────────────
+    # ─── Фаза 6.6: выбор источника инструмента ─────────────────────
     print()
     print("Источник инструмента Z:")
     print("  1) normal         — стандартный N(0,1)")
     print("  2) weather        — синтетический погодный Normal(45, 12)")
     print("  3) weather_real   — реальные данные NASA POWER")
+    print("  4) price_bartik   — ценовой Bartik/Shift-Share IV [РЕКОМЕНДУЕТСЯ]")
+
     instrument_choice = (
         ask(
-            "Источник инструмента Z (для устранения смещения PeakLoad): 1) normal — стандартный, 2) weather — синтетический, 3) weather_real — реальные данные NASA POWER",
-            "1",
+            "Источник инструмента Z (для устранения смещения PeakLoad): "
+            "1) normal, 2) weather, 3) weather_real, 4) price_bartik",
+            "4",  # ← Дефолт изменён на 4 (рекомендуемый)
         ).strip()
-        or "1"
+        or "4"
     )
 
     instrument_source = "normal"
     weather_campaign = "sowing"
+    price_instrument_path = "instrument_z_bartik.csv"
 
     if instrument_choice == "2":
         instrument_source = "weather"
+
     elif instrument_choice == "3":
         instrument_source = "weather_real"
         weather_campaign = (
-            ask(
-                "Кампания (sowing = посевная, harvest = уборочная)",
-                "sowing",
-            )
-            .strip()
-            .lower()
+            ask("Кампания (sowing = посевная, harvest = уборочная)", "sowing").strip().lower()
         )
         if weather_campaign not in ("sowing", "harvest"):
             weather_campaign = "sowing"
+
         # Проверка доступности данных
         weather_path = Path("data/processed/weather/weather_windows.csv")
         if not weather_path.exists():
             logger.warning(
                 "weather_windows.csv не найден. "
-                "Запустите load_nasa_power.py и "
-                "compute_working_days.py."
+                "Запустите load_nasa_power.py и compute_working_days.py."
             )
             if ask_yesno("Нет реальных данных: использовать fallback на normal?", True):
                 instrument_source = "normal"
             else:
                 raise RuntimeError(
                     "Реальные погодные данные недоступны. "
-                    "Запустите load_nasa_power.py и "
-                    "compute_working_days.py."
+                    "Запустите load_nasa_power.py и compute_working_days.py."
                 )
         else:
             logger.info(
                 "Используется реальный погодный инструмент (NASA POWER, campaign=%s)",
                 weather_campaign,
             )
-    else:
-        if instrument_choice not in ("1", "2", "3"):
+
+    # ─── НОВАЯ ВЕТКА: price_bartik ─────────────────────────────────
+    elif instrument_choice == "4":
+        instrument_source = "price_bartik"
+        price_instrument_path_str = (
+            ask(
+                "Путь к ценовому инструменту",
+                "instrument_z_bartik.csv",
+            ).strip()
+            or "instrument_z_bartik.csv"
+        )
+
+        price_instrument_path = price_instrument_path_str
+        price_path_obj = Path(price_instrument_path)
+
+        if not price_path_obj.exists():
             logger.warning(
-                "Неизвестный выбор '%s', используется normal",
-                instrument_choice,
+                "Файл ценового инструмента не найден: %s. "
+                "Запустите build_instrument_z.py для его создания.",
+                price_instrument_path,
             )
+            if ask_yesno(
+                "Ценовой инструмент недоступен: использовать fallback на normal?",
+                True,
+            ):
+                instrument_source = "normal"
+            else:
+                raise RuntimeError(
+                    f"Ценовой инструмент недоступен: {price_instrument_path}. "
+                    f"Запустите build_instrument_z.py."
+                )
+        else:
+            # Валидация файла: проверяем наличие обязательных колонок
+            try:
+                import pandas as pd
+
+                df_check = pd.read_csv(price_path_obj, encoding="utf-8-sig", nrows=5)
+                required_cols = {"region_name", "year", "z_standardized"}
+                missing = required_cols - set(df_check.columns)
+                if missing:
+                    raise ValueError(f"Отсутствуют колонки: {missing}")
+
+                n_rows = len(pd.read_csv(price_path_obj, encoding="utf-8-sig"))
+                logger.info(
+                    "✅ Ценовой инструмент Bartik загружен: %s (%d записей)",
+                    price_instrument_path,
+                    n_rows,
+                )
+            except Exception as exc:
+                logger.error("Ошибка валидации ценового инструмента: %s", exc)
+                if ask_yesno("Использовать fallback на normal?", True):
+                    instrument_source = "normal"
+                else:
+                    raise RuntimeError(f"Ценовой инструмент невалиден: {exc}") from exc
+
+    else:
+        if instrument_choice not in ("1", "2", "3", "4"):
+            logger.warning("Неизвестный выбор '%s', используется normal", instrument_choice)
 
     cfg.instrument_source = instrument_source
     cfg.weather_campaign = weather_campaign
+    cfg.price_instrument_path = price_instrument_path
 
     # ─── Фаза 6.6: источник данных о почве ────────────────────────
     soil_source = "claims"  # По умолчанию берём из claims
@@ -3803,6 +3859,7 @@ def generate_training_data(
         do_center_only=cfg.do_center_only,
         instrument_strength=cfg.instrument_strength,
         instrument_source=getattr(cfg, "instrument_source", "normal"),
+        price_instrument_path=getattr(cfg, "price_instrument_path", None),
     )
 
     achieved_event_rate, peak_stats, training_meta_flat = summarize_data(data)
@@ -4456,6 +4513,34 @@ def build_model_artifact(
         "soil_data_path": (
             "data/processed/soil/soil_windows.csv" if cfg.soil_source == "soil_real" else None
         ),
+
+        # ─── НОВОЕ: метаданные ценового инструмента ────────────────────────
+        "instrument_type": (
+            "price_bartik"
+            if cfg.instrument_source == "price_bartik"
+            else "weather"
+            if cfg.instrument_source in ("weather", "weather_real")
+            else "synthetic"
+        ),
+        "price_instrument": (
+            {
+                "source_file": cfg.price_instrument_path,
+                "basket_crops": ["wheat_total", "barley_total", "maize_grain", "sunflower_grain"],
+                "baseline_period": "2015-2017",
+                "price_lag_years": 1,
+                "n_regions": 11,
+                "excluded_regions": [
+                    "Тверская область",
+                    "Волгоградская область",
+                    "Псковская область",
+                    "Ленинградская область",
+                    "Амурская область",
+                ],
+            }
+            if cfg.instrument_source == "price_bartik"
+            else None
+        ),
+
         "regions_mis": [
             "Поволжье",
             "Северный Кавказ",

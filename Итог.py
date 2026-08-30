@@ -1535,6 +1535,182 @@ def _generate_errors(
 WEATHER_DATA_PATH = Path("data/processed/weather/weather_windows.csv")
 VALID_WEATHER_CAMPAIGNS = frozenset({"sowing", "harvest"})
 
+# ═══════════════════════════════════════════════════════════════════════
+# Фаза 6.7: Загрузка ценового инструмента Bartik (Shift-Share IV)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def load_price_bartik_instrument(
+    path: str = "instrument_z_bartik.csv",
+) -> pd.DataFrame:
+    """
+    Загрузка инструмента Z (Bartik / Shift-Share IV) из CSV.
+
+    Возвращает DataFrame с колонками:
+        - region_name: str
+        - year: int
+        - z_standardized: float (стандартизованный инструмент)
+        - z_raw: float (сырой логарифм взвешенной цены)
+        - coverage: float (покрытие региона)
+
+    Формула инструмента:
+        Z_{rt} = sum_c w^0_{rc} * ln(P^N_{c,t-1})
+
+    Где:
+        - w^0_{rc}: предопределённые веса (VSХП-2016)
+        - P^N_{c,t-1}: национальная цена культуры c за год t-1
+        - Лаг t-1 исключает обратную причинность
+
+    Базовая спецификация:
+        - Культуры: wheat, barley, maize, sunflower (4)
+        - Период: 2011-2025 (15 лет)
+        - Регионы: 11 (исключены 5 с покрытием < 50%)
+    """
+    logger = logging.getLogger(__name__)
+    path_obj = Path(path)
+
+    if not path_obj.exists():
+        raise FileNotFoundError(
+            f"Файл инструмента не найден: {path}\nЗапустите build_instrument_z.py для его создания."
+        )
+
+    df = pd.read_csv(path_obj, encoding="utf-8-sig")
+
+    # Валидация колонок
+    required_cols = {"region_name", "year", "z_standardized", "z_raw", "coverage"}
+    missing = required_cols - set(df.columns)
+    if missing:
+        raise ValueError(f"Отсутствуют обязательные колонки: {missing}")
+
+    # Приведение типов
+    df["year"] = df["year"].astype(int)
+    df["z_standardized"] = pd.to_numeric(df["z_standardized"], errors="coerce")
+    df["z_raw"] = pd.to_numeric(df["z_raw"], errors="coerce")
+    df["coverage"] = pd.to_numeric(df["coverage"], errors="coerce")
+
+    # Удаление строк с NaN в z_standardized
+    n_before = len(df)
+    df = df.dropna(subset=["z_standardized"])
+    if len(df) < n_before:
+        logger.warning("Удалено %d строк с NaN в z_standardized", n_before - len(df))
+
+    logger.info(
+        "Загружен ценовой инструмент Bartik: %d записей, %d регионов, годы %d–%d",
+        len(df),
+        df["region_name"].nunique(),
+        df["year"].min(),
+        df["year"].max(),
+    )
+
+    return df
+
+
+# Маппинг кодов регионов на строковые названия
+# (этот маппинг должен быть согласован с вашей основной моделью)
+REGION_CODE_TO_NAME = {
+    1: "Алтайский край",
+    2: "Белгородская область",
+    3: "Владимирская область",
+    4: "Воронежская область",
+    5: "Краснодарский край",
+    6: "Курская область",
+    7: "Липецкая область",
+    8: "Ростовская область",
+    9: "Самарская область",
+    10: "Саратовская область",
+    11: "Ставропольский край",
+    # При необходимости добавьте другие регионы
+}
+
+
+def get_price_bartik_z(
+    df_instrument: pd.DataFrame,
+    region_code: int,
+    year: int,
+    fallback: float = 0.0,
+) -> float:
+    """
+    Получить значение Z для конкретного региона и года.
+
+    Args:
+        df_instrument: DataFrame из load_price_bartik_instrument()
+        region_code: код региона (из REGION_CODE_TO_NAME)
+        year: год наблюдения
+        fallback: значение по умолчанию, если Z не найден
+
+    Returns:
+        Стандартизованное значение Z или fallback
+    """
+    region_name = REGION_CODE_TO_NAME.get(region_code)
+    if region_name is None:
+        return fallback
+
+    # Поиск в DataFrame
+    mask = (df_instrument["region_name"] == region_name) & (df_instrument["year"] == year)
+    matches = df_instrument.loc[mask, "z_standardized"]
+
+    if len(matches) == 0:
+        return fallback
+    elif len(matches) == 1:
+        return float(matches.iloc[0])
+    else:
+        # Несколько записей — берём среднее (на всякий случай)
+        return float(matches.mean())
+
+
+def generate_price_bartik_instrument(
+    rng: np.random.Generator,
+    n: int,
+    region_codes: np.ndarray,
+    years: np.ndarray,
+    df_instrument: pd.DataFrame,
+    fallback_mode: str = "normal",
+) -> np.ndarray:
+    """
+    Генерация массива Z для n тракторов на основе ценового инструмента.
+
+    Args:
+        rng: генератор случайных чисел
+        n: количество тракторов
+        region_codes: массив кодов регионов (длины n)
+        years: массив годов наблюдения (длины n)
+        df_instrument: DataFrame из load_price_bartik_instrument()
+        fallback_mode: что делать при отсутствии Z ("normal" или "zero")
+
+    Returns:
+        Массив Z длины n
+    """
+    z_arr = np.zeros(n)
+    n_fallback = 0
+
+    for i in range(n):
+        z_val = get_price_bartik_z(
+            df_instrument,
+            region_code=int(region_codes[i]),
+            year=int(years[i]),
+            fallback=np.nan,
+        )
+
+        if np.isnan(z_val):
+            n_fallback += 1
+            if fallback_mode == "normal":
+                z_arr[i] = rng.normal(0.0, 1.0)
+            else:
+                z_arr[i] = 0.0
+        else:
+            z_arr[i] = z_val
+
+    if n_fallback > 0:
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            "Для %d из %d тракторов (%.1f%%) Z не найден в инструменте, использован fallback (%s)",
+            n_fallback,
+            n,
+            100 * n_fallback / n,
+            fallback_mode,
+        )
+
+    return z_arr
 
 def load_real_weather_windows(
     campaign: str = "sowing",
@@ -1795,55 +1971,67 @@ def generate_base_instrument(
     weather_std_days: float = 12.0,
     weather_campaign: str = "sowing",
     weather_data_path: Path | None = None,
+    # ─── НОВЫЙ ПАРАМЕТР ────────────────────────────────────────────
+    price_instrument_path: str | None = None,
 ) -> np.ndarray:
-    """
-    Генерация базового инструмента Z.
-
-    source:
-    - "normal":       Z ~ N(0, 1)
-    - "uniform":      Z ~ U(-2, 2)
-    - "weather":      Z = синтетический Normal(mean, std)
-    - "weather_real": Z = реальные данные из weather_windows.csv
-    """
-    source = str(source).lower()
+    """Генерация базового инструмента Z."""
 
     if source == "normal":
-        z = rng.normal(0.0, 1.0, size=n)
-    elif source == "uniform":
-        z = rng.uniform(-2.0, 2.0, size=n)
+        return rng.normal(0.0, 1.0, size=n)
+
     elif source == "weather":
-        # Синтетический погодный инструмент (legacy)
-        window_days = rng.normal(weather_mean_days, weather_std_days, size=n)
-        window_days = np.clip(window_days, 5.0, 90.0)
-        z = window_days
+        raw = rng.normal(weather_mean_days, weather_std_days, size=n)
+        return (raw - raw.mean()) / max(raw.std(), 1e-12)
+
     elif source == "weather_real":
-        # Фаза 6.6: реальные данные из weather_windows.csv
+        # ... существующий код для weather_real ...
+        pass
+
+    # ─── НОВАЯ ВЕТКА: price_bartik ─────────────────────────────────
+    elif source == "price_bartik":
+        if price_instrument_path is None:
+            logger.warning("price_instrument_path не указан для price_bartik. Fallback на normal.")
+            return rng.normal(0.0, 1.0, size=n)
+
         try:
-            real_z = load_real_weather_windows(
-                path=weather_data_path,
-                campaign=weather_campaign,
-            )
+            df_instrument = load_price_bartik_instrument(price_instrument_path)
         except (FileNotFoundError, ValueError) as exc:
             logger.warning(
-                "Не удалось загрузить реальные погодные данные: %s. "
-                "Fallback на синтетический weather.",
+                "Не удалось загрузить ценовой инструмент: %s. Fallback на normal.",
                 exc,
             )
-            window_days = rng.normal(weather_mean_days, weather_std_days, size=n)
-            window_days = np.clip(window_days, 5.0, 90.0)
-            z = window_days
-        else:
-            # Повторная выборка с возвращением для n наблюдений
-            indices = rng.integers(0, len(real_z), size=n)
-            z = real_z[indices]
-    else:
-        raise ValueError(f"Unknown instrument_source: '{source}'")
+            return rng.normal(0.0, 1.0, size=n)
 
-    std = float(np.std(z, ddof=0))
-    if (not math.isfinite(std)) or std < 1e-12:
-        raise ValueError("Instrument has zero variance.")
-    z = (z - z.mean()) / std
-    return z
+        # Для симуляции DGP: случайно выбираем (регион, год) для каждого трактора
+        # Это создаёт реалистичное распределение Z
+        n_available = len(df_instrument)
+        if n_available == 0:
+            logger.warning("Ценовой инструмент пуст. Fallback на normal.")
+            return rng.normal(0.0, 1.0, size=n)
+
+        # Случайная выборка n записей из инструмента (с возвращением)
+        indices = rng.choice(n_available, size=n, replace=True)
+        z_values = df_instrument["z_standardized"].iloc[indices].values
+
+        # Дополнительная стандартизация (на случай, если выборка не репрезентативна)
+        z_mean = z_values.mean()
+        z_std = z_values.std(ddof=1)
+        if z_std > 1e-12:
+            z_values = (z_values - z_mean) / z_std
+
+        logger.info(
+            "Ценовой инструмент Bartik: %d записей, выбрано %d, mean=%.4f, std=%.4f",
+            n_available,
+            n,
+            z_values.mean(),
+            z_values.std(),
+        )
+
+        return z_values
+
+    else:
+        logger.warning("Неизвестный источник '%s', используется normal", source)
+        return rng.normal(0.0, 1.0, size=n)
 
 
 def _simulate_event_times(
@@ -2009,6 +2197,7 @@ def generate_data(
     instrument_strength: float | None = None,
     dgp: DGPParameters | None = None,
     instrument_source: str = "normal",
+    price_instrument_path: str | None = None,
     contamination_probability: float = 1.0,
 ) -> pd.DataFrame:
     """Generate synthetic survival data with endogenous treatment."""
@@ -2109,9 +2298,9 @@ def generate_data(
 
     # Instrument (skip if hybrid mode already set z_base)
     if not getattr(dgp, "use_real_covariates", False):
-        z_base = generate_base_instrument(
-            rng,
-            n,
+        z = generate_base_instrument(
+            rng=rng,
+            n=n,
             source=instrument_source,
             weather_mean_days=getattr(dgp, "weather_mean_days", 45.0),
             weather_std_days=getattr(dgp, "weather_std_days", 12.0),

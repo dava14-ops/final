@@ -1,0 +1,9 @@
+﻿source_sheet,frequency,geography_level,n_rows,n_observed_values,n_unique_products,n_unique_regions,year_min,year_max
+1.1,annual,national,312,264,26,1,2010,2021
+1.2,annual,national,324,263,27,1,2010,2021
+2,monthly,national,684,574,57,1,2021,2021
+3,monthly,national,522,414,58,1,2022,2022
+4,monthly,national,696,552,58,1,2023,2023
+5,monthly,national,768,560,64,1,2024,2024
+6.1,monthly,subject,26856,12358,89,161,2025,2025
+7.1,monthly,subject,15533,8055,90,158,2026,2026
