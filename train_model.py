@@ -1989,34 +1989,37 @@ def load_real_covariates_clustered_v2(
     - Возвращает cluster_id для каждого трактора
     """
     result: Dict[str, Any] = {}
-    
+
     # ─── НОВОЕ: если инструмент — ценовой Bartik ─────────────────────────
     if instrument_source == "price_bartik" and price_instrument_path is not None:
         try:
             from Итог import load_price_bartik_instrument
+
             df_instrument = load_price_bartik_instrument(price_instrument_path)
             n_available = len(df_instrument)
-            
+
             if n_available > 0:
                 indices = rng.choice(n_available, size=n, replace=True)
                 z_values = df_instrument["z_standardized"].iloc[indices].values.astype(float)
-                
+
                 z_mean = z_values.mean()
                 z_std = z_values.std(ddof=1)
                 if z_std > 1e-12:
                     z_values = (z_values - z_mean) / z_std
-                
+
                 result["Z"] = z_values
                 result["cluster_indices"] = np.arange(n)
-                
+
                 logger.info(
                     "Z = ценовой инструмент Bartik: mean=%.4f, std=%.4f, n=%d",
-                    z_values.mean(), z_values.std(), n,
+                    z_values.mean(),
+                    z_values.std(),
+                    n,
                 )
         except Exception as exc:
             logger.warning("Не удалось загрузить ценовой инструмент: %s", exc)
             instrument_source = "weather_real"
-    
+
     # Загрузка кластеров (Region × Year × Campaign)
     rain_path = Path("data/processed/weather/rainfall_anomaly.csv")
     weather_path = Path("data/processed/weather/weather_windows.csv")
@@ -3142,28 +3145,28 @@ def collect_training_config() -> TrainingConfig:
         print("=" * 70)
         print("РЕЖИМ: ГИБРИДНЫЙ (DGP + реальные weather/soil)")
         print("=" * 70)
-        
+
         # ─── НОВОЕ: проверка источника инструмента ─────────────────────
-        if instrument_source == "price_bartik":
+        if cfg.instrument_source == "price_bartik":
             print("⚠️ ВНИМАНИЕ: В гибридном режиме с инструментом 'price_bartik':")
             print("   - Z берётся из ценового инструмента (не из погодных данных)")
             print("   - x_climate, x_soil берутся из реальных спутниковых данных")
             print("   - Регионы тракторов маппятся на регионы из инструмента")
             print()
-            
+
             # Проверяем наличие файла ценового инструмента
-            price_path = Path(price_instrument_path)
+            price_path = Path(cfg.price_instrument_path)
             if not price_path.exists():
                 logger.warning(
-                    "Файл ценового инструмента не найден: %s. "
-                    "Переключаюсь на weather_real.",
-                    price_instrument_path,
+                    "Файл ценового инструмента не найден: %s. Переключаюсь на weather_real.",
+                    cfg.price_instrument_path,
                 )
-                instrument_source = "weather_real"
+                cfg.instrument_source = "weather_real"
             else:
                 # Загружаем ценовой инструмент для валидации
                 try:
                     from Итог import load_price_bartik_instrument
+
                     df_price_z = load_price_bartik_instrument(str(price_path))
                     logger.info(
                         "Ценовой инструмент Bartik валидирован: %d записей, %d регионов",
@@ -3172,20 +3175,20 @@ def collect_training_config() -> TrainingConfig:
                     )
                 except Exception as exc:
                     logger.error("Ошибка загрузки ценового инструмента: %s", exc)
-                    instrument_source = "weather_real"
+                    cfg.instrument_source = "weather_real"
                     logger.warning("Переключаюсь на weather_real")
-        
+
         # Проверяем наличие файлов погодных данных (для x_climate, x_soil)
         weather_path = Path("data/processed/weather/weather_windows.csv")
         soil_path = Path("data/processed/soil/soil_windows.csv")
         rain_path = Path("data/processed/weather/rainfall_anomaly.csv")
-        
+
         if not weather_path.exists() or not soil_path.exists():
             logger.warning("weather_windows.csv или soil_windows.csv не найдены.")
             # ... существующая логика ...
-        
+
         # ─── НОВОЕ: для price_bartik не нужен rainfall_anomaly ─────────
-        if instrument_source == "price_bartik":
+        if cfg.instrument_source == "price_bartik":
             print("   Инструмент Z: ценовой Bartik (shift-share IV)")
             print("   x_climate: working_days из NASA POWER")
             print("   x_soil: soil moisture из GLDAS-2.1")
@@ -3193,7 +3196,7 @@ def collect_training_config() -> TrainingConfig:
             print("Структурные данные генерируются через DGP (γ > 0 гарантирован).")
             print("Ковариаты x_climate, x_soil и инструмент Z берутся из")
             print("реальных спутниковых данных NASA POWER / GLDAS-2.1.")
-        
+
         print("=" * 70)
 
     if use_claims:
@@ -4585,7 +4588,6 @@ def build_model_artifact(
         "soil_data_path": (
             "data/processed/soil/soil_windows.csv" if cfg.soil_source == "soil_real" else None
         ),
-
         # ─── НОВОЕ: метаданные ценового инструмента ────────────────────────
         "instrument_type": (
             "price_bartik"
@@ -4612,7 +4614,6 @@ def build_model_artifact(
             if cfg.instrument_source == "price_bartik"
             else None
         ),
-
         "regions_mis": [
             "Поволжье",
             "Северный Кавказ",
@@ -5272,6 +5273,46 @@ def main() -> int:
     baseline_h = fit["baseline_h"]
     censoring_scale = fit["calibrated_censoring_scale"]
     baseline_diag = fit["baseline_diag"]
+
+    # ─── Monte Carlo Recovery Test: проверка масштабирования γ ────────────
+    if cfg.instrument_source == "price_bartik" and cfg.do_standardize:
+        print("\n" + "=" * 70)
+        print("MONTE CARLO RECOVERY TEST: масштабирование γ")
+        print("=" * 70)
+
+        # Истинный γ из DGP (до перенормировки под TUM)
+        gamma_dgp = float(dgp.gamma) if dgp is not None else 0.5
+
+        # Ожидаемое масштабирование при перенормировке под TUM
+        # PeakLoad_DGP: mean ≈ 10.10, std ≈ 1.12
+        # PeakLoad_TUM: mean ≈ 0.71, std ≈ 0.205
+        # γ_Cox_ожидаемый = γ_DGP × (std_DGP / std_TUM)
+        sigma_dgp = 1.12  # из лога
+        sigma_tum = 0.2053  # из TUM-статистик
+        gamma_expected = gamma_dgp * (sigma_dgp / sigma_tum)
+
+        # Полученная оценка из модели
+        pl_coef = fit["cox_coefs"].get("PeakLoad", float("nan"))
+        gamma_cox = float(pl_coef) if np.isfinite(pl_coef) else float("nan")
+
+        print(f"  γ_DGP (истинный):                {gamma_dgp:.4f}")
+        print(f"  γ_ожидаемый после перенормировки: {gamma_expected:.4f}")
+        print(f"  γ_Cox (полученный):              {gamma_cox:.4f}")
+
+        if np.isfinite(gamma_cox) and np.isfinite(gamma_expected) and gamma_expected != 0:
+            ratio = gamma_cox / gamma_expected
+            print(f"  Отношение γ_Cox / γ_ожидаемый:   {ratio:.3f}")
+
+            if abs(ratio - 1.0) > 0.3:
+                print("\n  ⚠️ ВНИМАНИЕ: γ восстанавливается плохо.")
+                print("  Это может быть связано с:")
+                print("    1. Некорректной кластерной структурой")
+                print("    2. Слабым инструментом (низкая корреляция с PeakLoad)")
+                print("    3. Проблемой генерируемого регрессора (v_hat)")
+            else:
+                print("\n  ✅ γ восстанавливается корректно.")
+        else:
+            print("\n  ⚠️ Не удалось вычислить ratio (nan или zero).")
 
     # 6. Сборка модели
     model_params = build_model_artifact(

@@ -1551,6 +1551,7 @@ def load_price_bartik_instrument(
     Загрузка инструмента Z (Bartik / Shift-Share IV) из CSV.
 
     Возвращает DataFrame с колонками:
+        - region_code: int (числовой код региона для assignment-модели)
         - region_name: str
         - year: int
         - z_standardized: float (стандартизованный инструмент)
@@ -1581,7 +1582,7 @@ def load_price_bartik_instrument(
     df = pd.read_csv(path_obj, encoding="utf-8-sig")
 
     # Валидация колонок
-    required_cols = {"region_name", "year", "z_standardized", "z_raw", "coverage"}
+    required_cols = {"region_name", "year", "z_standardized", "z_raw"}
     missing = required_cols - set(df.columns)
     if missing:
         raise ValueError(f"Отсутствуют обязательные колонки: {missing}")
@@ -1590,7 +1591,32 @@ def load_price_bartik_instrument(
     df["year"] = df["year"].astype(int)
     df["z_standardized"] = pd.to_numeric(df["z_standardized"], errors="coerce")
     df["z_raw"] = pd.to_numeric(df["z_raw"], errors="coerce")
-    df["coverage"] = pd.to_numeric(df["coverage"], errors="coerce")
+
+    # Обработка coverage (опционально)
+    if "coverage" in df.columns:
+        df["coverage"] = pd.to_numeric(df["coverage"], errors="coerce")
+
+    # ─── НОВОЕ: обработка region_code ───────────────────────────────
+    if "region_code" not in df.columns:
+        # Если region_code нет, создаём его через маппинг
+        name_to_code = {v: k for k, v in REGION_CODE_TO_NAME.items()}
+        df["region_code"] = df["region_name"].map(name_to_code)
+
+        # Проверяем, все ли регионы замаппились
+        n_unmapped = df["region_code"].isna().sum()
+        if n_unmapped > 0:
+            logger.warning(
+                "Для %d записей не удалось определить region_code. "
+                "Незамапленные регионы: %s",
+                n_unmapped,
+                sorted(df.loc[df["region_code"].isna(), "region_name"].unique()),
+            )
+            # Удаляем незамапленные записи
+            df = df.dropna(subset=["region_code"])
+
+        df["region_code"] = df["region_code"].astype(int)
+    else:
+        df["region_code"] = pd.to_numeric(df["region_code"], errors="coerce").astype(int)
 
     # Удаление строк с NaN в z_standardized
     n_before = len(df)
@@ -1598,10 +1624,11 @@ def load_price_bartik_instrument(
     if len(df) < n_before:
         logger.warning("Удалено %d строк с NaN в z_standardized", n_before - len(df))
 
+    n_regions = df["region_code"].nunique() if "region_code" in df.columns else df["region_name"].nunique()
     logger.info(
-        "Загружен ценовой инструмент Bartik: %d записей, %d регионов, годы %d–%d",
+        "Загружен ценовой инструмент Bartik: %d записей, %d регионов (region_code), годы %d–%d",
         len(df),
-        df["region_name"].nunique(),
+        n_regions,
         df["year"].min(),
         df["year"].max(),
     )
@@ -1815,33 +1842,113 @@ def load_real_covariates_for_simulation(
     """
     result: dict[str, np.ndarray] = {}
 
-    # ─── НОВОЕ: если инструмент — ценовой Bartik ───────────────────
+    # ─── Ценовой инструмент Bartik: детерминированная assignment ─────
     if instrument_source == "price_bartik" and price_instrument_path is not None:
         try:
             df_instrument = load_price_bartik_instrument(price_instrument_path)
 
-            # Для симуляции: случайно выбираем n записей из инструмента
-            n_available = len(df_instrument)
-            if n_available == 0:
-                raise ValueError("Ценовой инструмент пуст")
+            # Валидация: проверяем наличие необходимых колонок
+            required_cols = {"region_code", "year", "z_standardized"}
+            missing = required_cols - set(df_instrument.columns)
+            if missing:
+                raise ValueError(f"Отсутствуют колонки: {missing}")
 
-            # Случайная выборка n записей (с возвращением)
-            indices = rng.choice(n_available, size=n, replace=True)
-            z_values = df_instrument["z_standardized"].iloc[indices].values.astype(float)
+            # Уникальные shock cells: (region_code, year)
+            shock_cells = (
+                df_instrument[["region_code", "year", "z_standardized"]]
+                .drop_duplicates(subset=["region_code", "year"])
+                .reset_index(drop=True)
+            )
 
-            # Стандартизация
-            z_mean = z_values.mean()
-            z_std = z_values.std(ddof=1)
-            if z_std > 1e-12:
-                z_values = (z_values - z_mean) / z_std
+            # Проверка: нет ли дубликатов
+            key_cols = ["region_code", "year"]
+            if shock_cells.duplicated(subset=key_cols).any():
+                raise ValueError(
+                    "Дубликаты в shock cells (region_code, year). "
+                    "Проверьте instrument_z_bartik.csv."
+                )
 
-            result["Z"] = z_values
-            # Каждый трактор получает уникальное значение Z (не кластерный)
-            result["cluster_indices"] = np.arange(n)
+            n_shock_cells = len(shock_cells)
+            unique_regions = sorted(shock_cells["region_code"].unique())
+            unique_years = sorted(shock_cells["year"].unique())
+            n_regions = len(unique_regions)
+            n_years = len(unique_years)
 
             logger.info(
-                "Z = ценовой инструмент Bartik: mean=%.4f, std=%.4f, n=%d",
-                z_values.mean(), z_values.std(), n,
+                "Ценовой инструмент: %d shock cells (%d регионов × %d лет)",
+                n_shock_cells, n_regions, n_years,
+            )
+
+            # ─── Генерация привязки тракторов к (регион, год) ────────
+            # Равномерное распределение по регионам и годам.
+            # Для эмпирических долей можно передать веса как аргумент.
+
+            # Каждый трактор получает случайный регион и год
+            tractor_regions = rng.choice(
+                np.array(unique_regions), size=n, replace=True
+            )
+            tractor_years = rng.choice(
+                np.array(unique_years), size=n, replace=True
+            )
+
+            # Создаём DataFrame для merge
+            assignment = pd.DataFrame({
+                "region_code": tractor_regions,
+                "year": tractor_years,
+            })
+
+            # Детерминированный merge с инструментом
+            assignment = assignment.merge(
+                shock_cells,
+                on=["region_code", "year"],
+                how="left",
+                validate="many_to_one",
+            )
+
+            # Проверка: все ли тракторы получили Z
+            n_missing = assignment["z_standardized"].isna().sum()
+            if n_missing > 0:
+                logger.warning(
+                    "Для %d из %d тракторов Z не найден в инструменте. "
+                    "Заполняем средним.",
+                    n_missing, n,
+                )
+                assignment["z_standardized"] = assignment["z_standardized"].fillna(
+                    assignment["z_standardized"].mean()
+                )
+
+            # Извлекаем Z
+            z_values = assignment["z_standardized"].to_numpy(dtype=float)
+
+            # Стандартизация (для согласованности с другими инструментами)
+            z_mean = float(z_values.mean())
+            z_std = float(z_values.std(ddof=1))
+            if z_std > 1e-12:
+                z_values = (z_values - z_mean) / z_std
+            else:
+                z_std = 1.0
+
+            # ─── Кластерная структура: region × year ────────────────
+            # Каждый уникальный (регион, год) = один кластер
+            cluster_labels = (
+                assignment["region_code"].astype(str)
+                + "_"
+                + assignment["year"].astype(str)
+            )
+            cluster_codes, _ = pd.factorize(cluster_labels, sort=True)
+
+            n_unique_clusters = len(np.unique(cluster_codes))
+
+            result["Z"] = z_values
+            result["cluster_indices"] = cluster_codes
+
+            logger.info(
+                "Z = ценовой инструмент Bartik: mean=%.4f, std=%.4f, "
+                "n=%d, n_shock_cells=%d, n_clusters=%d, "
+                "n_regions=%d, years=%d–%d",
+                z_values.mean(), z_values.std(),
+                n, n_shock_cells, n_unique_clusters,
+                n_regions, int(min(unique_years)), int(max(unique_years)),
             )
 
         except Exception as exc:
@@ -2354,7 +2461,7 @@ def generate_data(
         )
     alpha = dgp.corr_zu
     u_std = _standardize_array(u)
-    z = np.sqrt(max(0.0, 1.0 - alpha * alpha)) * z_base + alpha * u_std
+    z = np.sqrt(max(0.0, 1.0 - alpha * alpha)) * z + alpha * u_std
 
     if not np.isfinite(np.var(z, ddof=0)):
         raise FloatingPointError("Instrument Z variance is non-finite")
@@ -2569,10 +2676,7 @@ def generate_data(
             )
     else:
         # Без TUM калибровки — оставляем как есть
-        pass
-
-    # Теперь peak_load будет построен на основе перенормированного base
-    peak_load = peak_load.copy()
+        peak_load = peak_load_base.copy()
 
     # Инициализируем lp_raw заранее, чтобы избежать UnboundLocalError
     lp_raw = None
