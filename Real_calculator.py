@@ -1908,50 +1908,15 @@ def collect_extended_parameters() -> dict[str, Any]:
     params["soil_index"] = soil_index
     params["selected_region"] = selected_region
 
-    # Выбор операций из TUM или сезонных факторов (fallback)
+    # ─── Выбор операции: только в универсальном режиме ─────────────
+    # В режиме культуры операции определяются агрокалендарём,
+    # поэтому выбор операции здесь пропускается.
+    # Сезонный фактор для стоимости простоя всё равно нужен.
     if TUM_OPERATIONS:
-        print("Выберите операцию (из реальных данных TUM CAN bus):")
-        op_list = sorted(TUM_OPERATIONS.keys())
-        for i, op in enumerate(op_list, start=1):
-            info = TUM_OPERATIONS[op]
-            # Защита от разных имён полей
-            pl_mean_raw = info.get("peak_load_mean", info.get("mean", 0.0))
-            pl_std_raw = info.get("peak_load_std", info.get("std", 0.0))
-            sf = info.get("season_factor", info.get("sf", 1.0))
-            n_obs = info.get("n_observations", info.get("n", 0))
-            name_ru = info.get("name_ru", op)
-            intensity = info.get("intensity", "")
-            # PATCH 1.1: Масштабирование удалено — шкалы TUM и DGP совпадают [0, 1]
-            pl_mean = pl_mean_raw
-            pl_std = pl_std_raw
-            intensity_str = f", интенсивность: {intensity}" if intensity else ""
-            print(
-                f"  {i:2d}) {name_ru:30s} ({op}) "
-                f"PeakLoad={pl_mean:.2f}±{pl_std:.2f} {intensity_str}\n"
-                f"      TUM: {pl_mean_raw * 100:.1f}% ± {pl_std_raw * 100:.1f}%, "
-                f"SF={sf:.2f}, n={n_obs:,}"
-            )
-        # Выбираем по номеру (дублирования нет — ask_choice уже был убран)
-        op_input = input(f"Номер операции [1-{len(op_list)}]: ").strip()
-        try:
-            idx = int(op_input)
-            if 1 <= idx <= len(op_list):
-                selected_operation = op_list[idx - 1]
-            else:
-                logger.warning("Неверный номер, используется операция по умолчанию.")
-                selected_operation = op_list[0]
-        except ValueError:
-            logger.warning("Неверный ввод, используется операция по умолчанию.")
-            selected_operation = op_list[0]
-
-        op_info = TUM_OPERATIONS[selected_operation]
-        # Защита от отсутствующих ключей
-        operation_peak_load_raw = op_info.get("peak_load_mean", op_info.get("mean", 0.71))
-        # PATCH 1.1: Масштабирование удалено — шкалы TUM и DGP совпадают [0, 1]
-        operation_peak_load = operation_peak_load_raw
-        operation_season_factor = op_info.get("season_factor", 1.0)
-        params["season"] = selected_operation
-        params["downtime_hour_cost"] = BASE_DOWNTIME_COST * operation_season_factor
+        # Временно сохраняем season=None, чтобы не ломать остальной код.
+        # Если культура будет выбрана позже, сезон определится из агрокалендаря.
+        params["season"] = None
+        params["downtime_hour_cost"] = BASE_DOWNTIME_COST
     else:
         print("⚠️  Реальные данные TUM не загружены. Обобщённый режим.")
         season_options = list(SEASONAL_FACTORS.keys())
@@ -3047,6 +3012,35 @@ def collect_user_inputs(
             cfg.crop_weighted_peak = weighted_peak
             cfg.crop_total_hours = total_hours
 
+            # ─── Сезонный фактор для стоимости простоя ─────────────
+            # В режиме культуры вычисляем средневзвешенный сезонный фактор
+            # по всем операциям агрокалендаря.
+            if TUM_OPERATIONS:
+                crop_obj = get_crop(crop_key)
+                if crop_obj is not None:
+                    weighted_sf_sum = 0.0
+                    weighted_hours_sum = 0.0
+                    for op in crop_obj.tractor_operations:
+                        op_info = TUM_OPERATIONS.get(op.operation_key, {})
+                        sf = op_info.get("season_factor", 1.0)
+                        hours_per_ha, _ = get_engine_hours_per_ha(
+                            op.doc_operation, tractor, cfg.k_ob
+                        ) if HAS_AGRO_NORMS else (0.15, 7.0)
+                        op_hours = hours_per_ha * op.passes * crop_area
+                        weighted_sf_sum += sf * op_hours
+                        weighted_hours_sum += op_hours
+                    if weighted_hours_sum > 0:
+                        avg_sf = weighted_sf_sum / weighted_hours_sum
+                    else:
+                        avg_sf = 1.0
+                    cfg.extended["season"] = f"{crop_obj.crop_name_ru} (агрокалендарь)"
+                    cfg.extended["downtime_hour_cost"] = BASE_DOWNTIME_COST * avg_sf
+                    logger.info(
+                        "Средневзвешенный сезонный фактор для '%s': %.2f",
+                        crop_obj.crop_name_ru,
+                        avg_sf,
+                    )
+
             # Показать план работ
             operation_names_ru = {}
             for op_key in TUM_OPERATIONS:
@@ -3135,20 +3129,19 @@ def collect_user_inputs(
         "Страховая сумма / лимит выплаты (руб.)", DEFAULT_SUM_INSURED
     )
 
-    # ─── Запрос горизонта: только если НЕ в режиме культуры ─────────
-    if not cfg.crop_key:
+    # ─── Горизонт: в режиме культуры НЕ запрашиваем у пользователя ─────
+    if cfg.crop_key and HAS_AGRO_CALENDAR:
+        # Горизонт уже вычислен из агрокалендаря как суммарные моточасы.
+        # Не перезаписываем его ручным вводом.
+        logger.info(
+            "Режим культуры: горизонт = %.0f моточасов (из агрокалендаря, не запрашивается)",
+            cfg.horizon,
+        )
+    else:
         horizon_default = DEFAULT_HORIZON_ENGINE_HOURS
         if cfg.calib_horizon_value is not None:
             horizon_default = float(cfg.calib_horizon_value)
-        cfg.horizon = _ask_positive_horizon(
-            "Горизонт прогнозирования (мото-часы)", horizon_default
-        )
-    else:
-        # В режиме культуры горизонт уже вычислен из агрокалендаря
-        logger.info(
-            "Режим культуры: горизонт = %.0f моточасов (из агрокалендаря)",
-            cfg.horizon,
-        )
+        cfg.horizon = _ask_positive_horizon("Горизонт прогнозирования (мото-часы)", horizon_default)
 
     cfg.theta = _ask_theta("Страховая нагрузка (доля, например 0.15 = 15%)", DEFAULT_THETA)
     cfg.discount_rate = _ask_discount_rate(
@@ -3327,17 +3320,18 @@ def compute_all_peaks(params: ModelParameters, cfg: CalculatorConfig) -> list[di
     results: list[dict[str, Any]] = []
 
     # ★ НОВОЕ: Если выбрана конкретная операция — добавить её PeakLoad
+    # ─── Определение пиков и меток ─────────────────────────────────
     peaks_to_compute = list(cfg.peaks)
     labels = [f"Q{i}" for i in range(len(cfg.peaks))]
 
-    # В режиме культуры переопределяем label для вывода
     if cfg.crop_key and HAS_AGRO_CALENDAR:
+        # Режим культуры: ОДИН расчёт для средневзвешенного пика.
+        # Операция из TUM НЕ добавляется — она уже учтена в агрокалендаре.
         crop = get_crop(cfg.crop_key)
         crop_name = crop.crop_name_ru if crop else cfg.crop_key
-        labels = [f"{crop_name} ({cfg.crop_area_ha:.0f} га)"]
-
-    # ─── В режиме культуры НЕ добавляем отдельную операцию ─────────
-    if not (cfg.crop_key and HAS_AGRO_CALENDAR):
+        labels = [f"{crop_name} ({cfg.crop_area_ha:.0f} га, {cfg.horizon:.0f} мч)"]
+    else:
+        # Универсальный режим: добавляем операцию из TUM, если выбрана.
         selected_operation = cfg.extended.get("season")
         if selected_operation and selected_operation in TUM_OPERATIONS:
             op_info = TUM_OPERATIONS[selected_operation]

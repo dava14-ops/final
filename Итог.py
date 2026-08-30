@@ -2423,6 +2423,7 @@ def generate_data(
             len(np.unique(cluster_id_from_real)),
             n,
         )
+        z = z_base  # ← присваиваем z для дальнейшего использования
     else:
         # Оригинальная генерация (синтетика)
         climate = rng.beta(2.5, 1.5, size=n)
@@ -2897,6 +2898,9 @@ def generate_data(
             "cluster_id": cluster_id,
         }
     )
+    # ─── Oracle-CF: истинные структурные residuals ─────────────────────
+    data["eps_d"] = eps_d
+    data["U"] = u
 
     # Brand dummy columns
     for code, name in BRAND_MAP.items():
