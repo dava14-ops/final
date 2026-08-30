@@ -532,6 +532,10 @@ class DGPParameters:
     weather_std_days: float = 12.0
     weather_campaign: str = "sowing"  # "sowing" или "harvest"
 
+    # ─── НОВОЕ: Фаза 6.7 — ценовой инструмент Bartik ─────────────────────
+    instrument_source: str = "normal"       # normal | weather | weather_real | price_bartik
+    price_instrument_path: str | None = None
+
     # ─── Фаза 6.6: источник данных о почве ─────────────────────────────
     # "synthetic" — Beta(2.0, 2.5) распределение
     # "claims" — из claims_clean.csv (реальный GLDAS)
