@@ -1978,6 +1978,9 @@ def load_real_covariates_clustered_v2(
     n: int,
     rng: np.random.Generator,
     campaign: str = "sowing",
+    # ─── НОВЫЕ ПАРАМЕТРЫ ─────────────────────────────────────────────────
+    instrument_source: str = "weather_real",
+    price_instrument_path: str | None = None,
 ) -> Dict[str, Any]:
     """
     Кластерная генерация v2:
@@ -1986,7 +1989,34 @@ def load_real_covariates_clustered_v2(
     - Возвращает cluster_id для каждого трактора
     """
     result: Dict[str, Any] = {}
-
+    
+    # ─── НОВОЕ: если инструмент — ценовой Bartik ─────────────────────────
+    if instrument_source == "price_bartik" and price_instrument_path is not None:
+        try:
+            from Итог import load_price_bartik_instrument
+            df_instrument = load_price_bartik_instrument(price_instrument_path)
+            n_available = len(df_instrument)
+            
+            if n_available > 0:
+                indices = rng.choice(n_available, size=n, replace=True)
+                z_values = df_instrument["z_standardized"].iloc[indices].values.astype(float)
+                
+                z_mean = z_values.mean()
+                z_std = z_values.std(ddof=1)
+                if z_std > 1e-12:
+                    z_values = (z_values - z_mean) / z_std
+                
+                result["Z"] = z_values
+                result["cluster_indices"] = np.arange(n)
+                
+                logger.info(
+                    "Z = ценовой инструмент Bartik: mean=%.4f, std=%.4f, n=%d",
+                    z_values.mean(), z_values.std(), n,
+                )
+        except Exception as exc:
+            logger.warning("Не удалось загрузить ценовой инструмент: %s", exc)
+            instrument_source = "weather_real"
+    
     # Загрузка кластеров (Region × Year × Campaign)
     rain_path = Path("data/processed/weather/rainfall_anomaly.csv")
     weather_path = Path("data/processed/weather/weather_windows.csv")
@@ -1994,7 +2024,7 @@ def load_real_covariates_clustered_v2(
 
     clusters: list = []  # list of dicts
 
-    if rain_path.exists() and weather_path.exists() and soil_path.exists():
+    if "Z" not in result and rain_path.exists() and weather_path.exists() and soil_path.exists():
         rdf = pd.read_csv(rain_path)
         wdf = pd.read_csv(weather_path)
         sdf = pd.read_csv(soil_path)
