@@ -6347,6 +6347,8 @@ def ph_diagnostics_report(
 
     Использует lifelines.statistics.proportional_hazard_test с fallback
     на ручное вычисление. Возвращает структурированный dict для audit trail.
+    
+    Применяет коррекцию Бонферрони для множественного тестирования.
     """
     report: dict[str, Any] = {
         "method": "Schoenfeld residual test (Grambsch-Therneau)",
@@ -6358,6 +6360,7 @@ def ph_diagnostics_report(
         "variables": {},
         "violations": [],
         "status": "PASS",
+        "multiple_testing_correction": "bonferroni",
     }
 
     # ─── Проверка предусловий ────────────────────────────────────────
@@ -6381,6 +6384,12 @@ def ph_diagnostics_report(
         report["status"] = "ERROR"
         report["error"] = "No covariates in fitted model"
         return report
+
+    # ★ НОВОЕ: вычисляем число тестов ДО цикла для коррекции Бонферрони
+    n_covariates = len(covariates)
+    alpha_corrected = alpha / max(n_covariates, 1)  # Бонферрони
+    report["alpha_corrected"] = alpha_corrected
+    report["n_tests"] = n_covariates
 
     model_cols_in_data = [c for c in covariates if c in data.columns]
     missing_cols = [c for c in covariates if c not in data.columns]
@@ -6455,7 +6464,8 @@ def ph_diagnostics_report(
                         }
                         continue
 
-                    reject = bool(p_value < alpha)
+                    # ★ НОВОЕ: используем скорректированный alpha (Бонферрони)
+                    reject = bool(p_value < alpha_corrected)
                     report["variables"][cov_name] = {
                         "test_statistic": test_stat,
                         "p_value": p_value,
@@ -6557,7 +6567,7 @@ def ph_diagnostics_report(
                 }
                 continue
 
-            reject = bool(p_value < alpha)
+            reject = bool(p_value < alpha_corrected)
             report["variables"][cov] = {
                 "test_statistic": float(test_stat),
                 "p_value": float(p_value),
@@ -6590,9 +6600,41 @@ def ph_diagnostics_report(
             "reject_at_alpha": bool(global_p < alpha),
         }
 
-    # ─── Определение общего статуса ──────────────────────────────────
-    if report["violations"]:
+    # ─── Определение общего статуса с учётом приоритета переменных ───
+    # ★ НОВОЕ: проверка целевых переменных отдельно
+    PRIMARY_COVARIATES = {"PeakLoad", "v_hat"}
+    primary_violations = [
+        v for v in report["violations"]
+        if any(v.lower().startswith(p.lower()) for p in PRIMARY_COVARIATES)
+    ]
+    report["primary_covariates_ph_ok"] = len(primary_violations) == 0
+
+    # Определяем статус с учётом глобального теста и первичных ковариат
+    global_test = report.get("global_test")
+    if global_test is not None:
+        global_pass = not global_test.get("reject_at_alpha", False)
+    else:
+        global_pass = True
+
+    if primary_violations:
+        # Критическое нарушение для целевых переменных
+        report["status"] = "FAIL"
+        report["error"] = (
+            f"PRIMARY covariates violate PH: {primary_violations}. "
+            f"Model specification must be revised."
+        )
+    elif report["violations"] and not global_pass:
+        # Второстепенные нарушения + глобальный тест не проходит
         report["status"] = "WARN"
+    elif report["violations"] and global_pass:
+        # Второстепенные нарушения при прохождении глобального теста
+        report["status"] = "PASS_WITH_NOTES"
+        report["note"] = (
+            f"Individual PH violations for {report['violations']} "
+            f"(Bonferroni α={alpha_corrected:.4f}), but global test "
+            f"passes (p={global_test.get('p_value', float('nan')):.4f}). "
+            f"Primary covariates (PeakLoad, v_hat) satisfy PH."
+        )
     else:
         report["status"] = "PASS"
 
