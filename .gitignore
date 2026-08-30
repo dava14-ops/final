@@ -1,24 +1,16 @@
 ```
-# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-
-# Logs and temp files
 *.log
-*.tmp
-
-# Environment
 .env
 .env.local
-*.env.*
-
-# Editors
+.env.*
 .vscode/
 .idea/
-
-# Dependencies
-.venv/
-venv/
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
 ```

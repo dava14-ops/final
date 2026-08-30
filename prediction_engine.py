@@ -1220,6 +1220,19 @@ def _compute_age_hours_interaction(
     hours_raw = _get_source_value(params, covariates, hours_aliases)
 
     if age_raw is None or hours_raw is None:
+        # В режиме strict_covariates бросаем ошибку, иначе возвращаем 0.0
+        # для обратной совместимости
+        meta = _get_training_meta(params)
+        strict_mode = meta.get("strict_covariates", False)
+        if strict_mode:
+            missing = []
+            if age_raw is None:
+                missing.append("Age")
+            if hours_raw is None:
+                missing.append("Hours")
+            raise InvalidInputError(
+                f"Required covariates for x_age_hours interaction are missing: {', '.join(missing)}"
+            )
         return 0.0
 
     # Шаг 1: стандартизация

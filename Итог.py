@@ -2134,8 +2134,19 @@ def generate_base_instrument(
         return (raw - raw.mean()) / max(raw.std(), 1e-12)
 
     elif source == "weather_real":
-        # ... существующий код для weather_real ...
-        pass
+        try:
+            z_real = load_real_weather_windows(
+                campaign=weather_campaign,
+                path=weather_data_path,
+            )
+            # Ресэмплинг с возвращением до n
+            indices = rng.integers(0, len(z_real), size=n)
+            return z_real[indices]
+        except Exception as exc:
+            logger.warning(
+                "weather_real failed (%s), fallback to normal instrument", exc
+            )
+            return rng.normal(0.0, 1.0, size=n)
 
     # ─── НОВАЯ ВЕТКА: price_bartik ─────────────────────────────────
     elif source == "price_bartik":
@@ -3141,10 +3152,19 @@ class FirstStageAdapter:
 
 def run_first_stage_on_claims(
     data_mod: pd.DataFrame,
+    cluster_col: str | None = None,
 ) -> tuple[Any, np.ndarray, list[str], dict[str, float], dict[str, Any]]:
     """
     Оценить первую стадию на claims-данных.
     PeakLoad ~ Z + X
+
+    Parameters
+    ----------
+    data_mod : pd.DataFrame
+        Данные с PeakLoad, X, Z.
+    cluster_col : str, optional
+        Имя колонки для кластеризации стандартных ошибок.
+        Если None, используются гетероскедастично-робастные ошибки HC3.
 
     Returns
     -------
@@ -3170,12 +3190,18 @@ def run_first_stage_on_claims(
 
     # OLS
     X_with_const = sm.add_constant(X) if "const" not in exog_cols else X
+    
+    # Выбор типа ковариационной матрицы: кластерные или HC3
     import warnings
 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=UserWarning)
         warnings.filterwarnings("ignore", message=".*covariance of constraints.*")
-        ols_model = sm.OLS(y, X_with_const).fit(cov_type="HC3")
+        if cluster_col is not None and cluster_col in data_mod.columns:
+            ols_model = sm.OLS(y, X_with_const).fit(cov_type="cluster", cov_kwds={"groups": data_mod[cluster_col]})
+            logger.info("Первая стадия на claims: кластерные SE по '%s'", cluster_col)
+        else:
+            ols_model = sm.OLS(y, X_with_const).fit(cov_type="HC3")
 
     residuals = ols_model.resid
 
@@ -3235,6 +3261,7 @@ def fit_cf_cox_on_claims(
     first_stage: Any,
     v_hat_basis: str = "linear",
     v_hat_basis_params: dict[str, Any] | None = None,
+    cluster_col: str | None = None,
 ) -> Any:
     """
     Оценить CF Cox модель на claims-данных.
@@ -3308,14 +3335,21 @@ def fit_cf_cox_on_claims(
 
     cox_data = data_mod[cols_to_keep].copy()
 
-    # Обучение Cox PH
+    # Обучение Cox PH с поддержкой cluster_col
     cph = CoxPHFitter(penalizer=0.1)
+    fit_kwargs = {"duration_col": "time", "event_col": "event"}
+    
+    # Если cluster_col указан и есть в данных, используем cluster-robust SE
+    if cluster_col is not None and cluster_col in data_mod.columns:
+        fit_kwargs["cluster_col"] = cluster_col
+        logger.info("CF Cox на claims: cluster-robust SE по '%s'", cluster_col)
+    
     try:
-        cph.fit(cox_data, duration_col="time", event_col="event")
+        cph.fit(cox_data, **fit_kwargs)
     except Exception as exc:
         logger.warning("Обучение с penalizer=0.1 не удалось: %s. Пробую без регуляризации.", exc)
         cph = CoxPHFitter(penalizer=0.0)
-        cph.fit(cox_data, duration_col="time", event_col="event")
+        cph.fit(cox_data, **fit_kwargs)
 
     # Собрать результат
     cf = CFModelResult()
@@ -3326,24 +3360,29 @@ def fit_cf_cox_on_claims(
     cf.warnings = []
 
     # --- ИЗВЛЕЧЕНИЕ GAMMA_HAT И СТАНДАРТНЫХ ОШИБОК ---
-    # Ищем колонку контрольной функции (обычно 'v_hat' или начинается с 'v_hat')
-    cf_cols = [c for c in cph.params_.index if c == "v_hat" or c.startswith("v_hat") or c == "cf"]
-    cf_col = cf_cols[0] if cf_cols else "v_hat"
-
-    if cf_col in cph.params_.index:
-        cf.gamma_hat = float(cph.params_[cf_col])
-        cf.cf_coef_signed = cf.gamma_hat
-        cf.cf_coef = cf.gamma_hat
-        try:
-            # В lifelines стандартная ошибка хранится в summary
-            cf.naive_model_se = float(cph.summary.loc[cf_col, "se(coef)"])
-        except Exception:
-            cf.naive_model_se = np.nan
+    # γ — коэффициент при PeakLoad (целевой параметр)
+    if "PeakLoad" in cph.params_.index:
+        cf.gamma_hat = float(cph.params_["PeakLoad"])
     else:
-        cf.gamma_hat = np.nan
-        cf.naive_model_se = np.nan
-        cf.cf_coef_signed = np.nan
-        cf.cf_coef = np.nan
+        cf.gamma_hat = float("nan")
+        logger.warning("PeakLoad coefficient not found in claims Cox model")
+
+    # λ — коэффициент при v_hat (контрольная функция)
+    cf_cols = [c for c in cph.params_.index 
+               if c == "v_hat" or c.startswith("v_hat") or c == "cf"]
+    cf_col = cf_cols[0] if cf_cols else "v_hat"
+    if cf_col in cph.params_.index:
+        cf.cf_coef = float(cph.params_[cf_col])
+        cf.cf_coef_signed = cf.cf_coef
+    else:
+        cf.cf_coef = float("nan")
+        cf.cf_coef_signed = float("nan")
+
+    # SE для PeakLoad
+    if "PeakLoad" in cph.standard_errors_.index:
+        cf.naive_model_se = float(cph.standard_errors_["PeakLoad"])
+    else:
+        cf.naive_model_se = float("nan")
 
     logger.info(
         "CF Cox на claims обучен: %d ковариат, %d событий",
