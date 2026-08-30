@@ -4203,6 +4203,11 @@ def fit_first_stage_and_cf(
 
         overall_status = ph_diagnostics.get("status", "UNKNOWN")
         print(f"\nOverall status: {overall_status}")
+
+        if overall_status == "PASS_WITH_NOTES":
+            note = ph_diagnostics.get("note", "N/A")
+            print(f"Note: {note}")
+
         print("=" * 70 + "\n")
 
     # ─── Bootstrap SE for generated regressors (Issue #4) ───────────────────
