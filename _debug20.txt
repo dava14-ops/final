@@ -1,0 +1,312 @@
+INFO: x_age_hours diagnostics: mean=0.0000, std=1.0000, min=-4.6706, max=6.5663
+INFO: Z = rainfall anomaly (NASA POWER): mean=-0.20, std=1.11, n_clusters=32, n_tractors=40000
+INFO: x_climate = working_days (NASA POWER): range=[35, 59] дней, n=32 записей
+INFO: x_soil = soil moisture (GLDAS-2.1): n=32 записей
+INFO: Гибридный режим: Z, x_climate, x_soil из реальных данных, cluster_id=32 unique values (n=40000)
+INFO: x_age_hours diagnostics: mean=-0.0000, std=1.0000, min=-4.6990, max=6.5474
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Python\Lib\logging\__init__.py", line 1154, in emit
+    stream.write(msg + self.terminator)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python\Lib\encodings\cp1251.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 52: character maps to <undefined>
+Call stack:
+  File "C:\workspace\mc_hybrid_transformation_decomposition.py", line 540, in <module>
+    raise SystemExit(main())
+  File "C:\workspace\mc_hybrid_transformation_decomposition.py", line 499, in main
+    all_results.extend(run_rep(rep, args.seed, str(args.model), args.n, args.equalize_event_rate))
+  File "C:\workspace\mc_hybrid_transformation_decomposition.py", line 437, in run_rep
+    return _run_rep_impl(rep, seed, model_path, n, equalize_event_rate)
+  File "C:\workspace\mc_hybrid_transformation_decomposition.py", line 395, in _run_rep_impl
+    real_template = generate_data(
+  File "C:\workspace\Итог.py", line 2166, in generate_data
+    logger.info(
+Message: 'PeakLoad перенормирован под TUM: mean=%.4f \u2192 %.4f, std=%.4f \u2192 %.4f'
+Arguments: (10.092066639056455, 0.70993820329817, 1.4070879612825709, 0.20533694365378774)
+INFO: Cluster ID: используем cluster_indices из реальных данных (32 уникальных)
+INFO: fit_stage for stage=A_canonical_raw_synthetic
+INFO: fit_first_stage for stage=A_canonical_raw_synthetic (n=40000, events=800)
+INFO: fit_first_stage completed for stage=A_canonical_raw_synthetic (f=10055.69)
+INFO: fit_cf_cox for stage=A_canonical_raw_synthetic (cluster_col=None)
+DEBUG0: weak_instrument=False type=bool
+DEBUG0: fail_on_weak_instrument=False
+DEBUG1: residuals OK
+DEBUG2: model_data created with cols=['time', 'event', 'PeakLoad']
+DEBUG3: x_cols=['x_age', 'x_hours', 'x_climate', 'x_soil', 'x_power', 'brand_Versatile280', 'brand_NewHollandT9', 'brand_DT75', 'brand_Other', 'x_age_hours']
+DEBUG4: checking cluster_col=None
+DEBUG5: cluster_col block done
+DEBUG6: center_peakload block done
+DEBUG7: covariate_cols_before_cf=['PeakLoad', 'x_age', 'x_hours', 'x_climate', 'x_soil', 'x_power', 'brand_Versatile280', 'brand_NewHollandT9', 'brand_DT75', 'brand_Other', 'x_age_hours']
+DEBUG8: _validate_survival_frame done
+DEBUG9: calling _build_cf_columns
+DEBUG10: cf_cols built, v_hat_cols=['v_hat']
+DEBUG11: n_events=800, n=40000
+DEBUG12: _check_cols=['time', 'event', 'PeakLoad', 'x_age', 'x_hours', 'x_climate', 'x_soil', 'x_power', 'brand_Versatile280', 'brand_NewHollandT9', 'brand_DT75', 'brand_Other', 'x_age_hours', 'v_hat']
+DEBUG13: finiteness check passed
+DEBUG14: pl_hat computed, shape=(40000,)
+DEBUG15: pl_hat finiteness check passed
+DEBUG16: training_pl_hat_mean=10.158755863123705
+DEBUG17: x_cols is truthy, entering partial-out block
+DEBUG18: partial-out ols fit succeeded
+DEBUG19: entering Cox fit loop
+DEBUG20: pen=0.0
+DEBUG21: inside try block
+DEBUG _fit_cox_model ENTRY: pen=0.0, cluster_col=None
+DEBUG _fit_cox_model: model_data.dtypes=
+time                  float64
+event                    bool
+PeakLoad              float64
+x_age                 float64
+x_hours               float64
+x_climate             float64
+x_soil                float64
+x_power               float64
+brand_Versatile280    float64
+brand_NewHollandT9    float64
+brand_DT75            float64
+brand_Other           float64
+x_age_hours           float64
+v_hat                 float64
+dtype: object
+DEBUG _fit_cox_model: col=time type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=event type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=PeakLoad type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_age type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_hours type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_climate type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_soil type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_power type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_Versatile280 type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_NewHollandT9 type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_DT75 type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_Other type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_age_hours type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=v_hat type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: df shape=(40000, 14), nulls=0
+DEBUG20: pen=1e-05
+DEBUG21: inside try block
+DEBUG _fit_cox_model ENTRY: pen=1e-05, cluster_col=None
+DEBUG _fit_cox_model: model_data.dtypes=
+time                  float64
+event                    bool
+PeakLoad              float64
+x_age                 float64
+x_hours               float64
+x_climate             float64
+x_soil                float64
+x_power               float64
+brand_Versatile280    float64
+brand_NewHollandT9    float64
+brand_DT75            float64
+brand_Other           float64
+x_age_hours           float64
+v_hat                 float64
+dtype: object
+DEBUG _fit_cox_model: col=time type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=event type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=PeakLoad type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_age type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_hours type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_climate type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_soil type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_power type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_Versatile280 type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_NewHollandT9 type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_DT75 type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_Other type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_age_hours type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=v_hat type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: df shape=(40000, 14), nulls=0
+DEBUG20: pen=0.0001
+DEBUG21: inside try block
+DEBUG _fit_cox_model ENTRY: pen=0.0001, cluster_col=None
+DEBUG _fit_cox_model: model_data.dtypes=
+time                  float64
+event                    bool
+PeakLoad              float64
+x_age                 float64
+x_hours               float64
+x_climate             float64
+x_soil                float64
+x_power               float64
+brand_Versatile280    float64
+brand_NewHollandT9    float64
+brand_DT75            float64
+brand_Other           float64
+x_age_hours           float64
+v_hat                 float64
+dtype: object
+DEBUG _fit_cox_model: col=time type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=event type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=PeakLoad type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_age type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_hours type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_climate type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_soil type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_power type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_Versatile280 type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_NewHollandT9 type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_DT75 type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_Other type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_age_hours type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=v_hat type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: df shape=(40000, 14), nulls=0
+DEBUG20: pen=0.001
+DEBUG21: inside try block
+DEBUG _fit_cox_model ENTRY: pen=0.001, cluster_col=None
+DEBUG _fit_cox_model: model_data.dtypes=
+time                  float64
+event                    bool
+PeakLoad              float64
+x_age                 float64
+x_hours               float64
+x_climate             float64
+x_soil                float64
+x_power               float64
+brand_Versatile280    float64
+brand_NewHollandT9    float64
+brand_DT75            float64
+brand_Other           float64
+x_age_hours           float64
+v_hat                 float64
+dtype: object
+DEBUG _fit_cox_model: col=time type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=event type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=PeakLoad type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_age type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_hours type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_climate type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_soil type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_power type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_Versatile280 type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_NewHollandT9 type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_DT75 type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_Other type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_age_hours type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=v_hat type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: df shape=(40000, 14), nulls=0
+DEBUG20: pen=0.01
+DEBUG21: inside try block
+DEBUG _fit_cox_model ENTRY: pen=0.01, cluster_col=None
+DEBUG _fit_cox_model: model_data.dtypes=
+time                  float64
+event                    bool
+PeakLoad              float64
+x_age                 float64
+x_hours               float64
+x_climate             float64
+x_soil                float64
+x_power               float64
+brand_Versatile280    float64
+brand_NewHollandT9    float64
+brand_DT75            float64
+brand_Other           float64
+x_age_hours           float64
+v_hat                 float64
+dtype: object
+DEBUG _fit_cox_model: col=time type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=event type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=PeakLoad type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_age type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_hours type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_climate type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_soil type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_power type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_Versatile280 type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_NewHollandT9 type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_DT75 type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_Other type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_age_hours type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=v_hat type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: df shape=(40000, 14), nulls=0
+DEBUG20: pen=0.1
+DEBUG21: inside try block
+DEBUG _fit_cox_model ENTRY: pen=0.1, cluster_col=None
+DEBUG _fit_cox_model: model_data.dtypes=
+time                  float64
+event                    bool
+PeakLoad              float64
+x_age                 float64
+x_hours               float64
+x_climate             float64
+x_soil                float64
+x_power               float64
+brand_Versatile280    float64
+brand_NewHollandT9    float64
+brand_DT75            float64
+brand_Other           float64
+x_age_hours           float64
+v_hat                 float64
+dtype: object
+DEBUG _fit_cox_model: col=time type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=event type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=PeakLoad type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_age type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_hours type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_climate type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_soil type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_power type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_Versatile280 type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_NewHollandT9 type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_DT75 type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=brand_Other type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=x_age_hours type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: col=v_hat type=ndarray shape=(40000,)
+DEBUG _fit_cox_model: df shape=(40000, 14), nulls=0
+Частичный F для Z (после контроля X): 10055.69
+ERROR: fit_cf_cox FAILED for stage=A_canonical_raw_synthetic: CF Cox fit failed. Last error: ValueError: The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()
+Traceback (most recent call last):
+  File "C:\workspace\mc_hybrid_transformation_decomposition.py", line 353, in fit_stage
+    cf = fit_cf_cox(fit_data, fs, cox_opts)
+  File "C:\workspace\Итог.py", line 4470, in fit_cf_cox
+    raise RuntimeError(
+        f"CF Cox fit failed. Last error: {format_exception(last_exc, opts.save_tracebacks)}"
+    )
+RuntimeError: CF Cox fit failed. Last error: ValueError: The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()
+
+ERROR: run_rep rep=1 failed: CF Cox fit failed. Last error: ValueError: The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()
+Traceback (most recent call last):
+  File "C:\workspace\mc_hybrid_transformation_decomposition.py", line 437, in run_rep
+    return _run_rep_impl(rep, seed, model_path, n, equalize_event_rate)
+  File "C:\workspace\mc_hybrid_transformation_decomposition.py", line 427, in _run_rep_impl
+    r = fit_stage(data, stage, spec)
+  File "C:\workspace\mc_hybrid_transformation_decomposition.py", line 353, in fit_stage
+    cf = fit_cf_cox(fit_data, fs, cox_opts)
+  File "C:\workspace\Итог.py", line 4470, in fit_cf_cox
+    raise RuntimeError(
+        f"CF Cox fit failed. Last error: {format_exception(last_exc, opts.save_tracebacks)}"
+    )
+RuntimeError: CF Cox fit failed. Last error: ValueError: The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()
+
+rep 1/1
+C:\workspace\mc_hybrid_transformation_decomposition.py:452: RuntimeWarning: Mean of empty slice
+  bias = float(g.mean() - true)
+C:\Python\Lib\site-packages\numpy\_core\_methods.py:142: RuntimeWarning: invalid value encountered in scalar divide
+  ret = ret.dtype.type(ret / rcount)
+C:\workspace\mc_hybrid_transformation_decomposition.py:457: RuntimeWarning: Mean of empty slice
+  "gamma_mean_raw": float(g.mean()),
+C:\Python\Lib\site-packages\numpy\_core\_methods.py:219: RuntimeWarning: Degrees of freedom <= 0 for slice
+  ret = _var(a, axis=axis, dtype=dtype, out=out, ddof=ddof,
+C:\Python\Lib\site-packages\numpy\_core\_methods.py:178: RuntimeWarning: invalid value encountered in divide
+  arrmean = um.true_divide(arrmean, div, out=arrmean,
+C:\Python\Lib\site-packages\numpy\_core\_methods.py:211: RuntimeWarning: invalid value encountered in scalar divide
+  ret = ret.dtype.type(ret / rcount)
+C:\Python\Lib\site-packages\numpy\_core\fromnumeric.py:3862: RuntimeWarning: Mean of empty slice
+  return _methods._mean(a, axis=axis, dtype=dtype,
+
+TRANSFORMATION DECOMPOSITION
+==============================================================================================================
+                    stage  n_success  failure_rate  gamma_mean_raw  bias_raw  relative_bias_raw  sd_raw  rmse_raw  mcse_raw  lambda_mean  lambda_sd  mean_f  mean_cluster_f  mean_partial_f  mean_events  mean_event_rate  mean_censoring_scale  mean_peakload_sd_raw  mean_peakload_sd_std
+A_canonical_raw_synthetic          0           1.0             NaN       NaN                NaN     NaN       NaN       NaN          NaN        NaN     NaN             NaN             NaN          NaN              NaN                   NaN                   NaN                   NaN
+               B_plus_TUM          0           1.0             NaN       NaN                NaN     NaN       NaN       NaN          NaN        NaN     NaN             NaN             NaN          NaN              NaN                   NaN                   NaN                   NaN
+   C_plus_standardization          0           1.0             NaN       NaN                NaN     NaN       NaN       NaN          NaN        NaN     NaN             NaN             NaN          NaN              NaN                   NaN                   NaN                   NaN
+ D_plus_real_weather_soil          0           1.0             NaN       NaN                NaN     NaN       NaN       NaN          NaN        NaN     NaN             NaN             NaN          NaN              NaN                   NaN                   NaN                   NaN
+            E_full_hybrid          0           1.0             NaN       NaN                NaN     NaN       NaN       NaN          NaN        NaN     NaN             NaN             NaN          NaN              NaN                   NaN                   NaN                   NaN
+
+Saved:
+mc_hybrid_transformation_results\transformation_decomposition_results.csv
+mc_hybrid_transformation_results\transformation_decomposition_summary.csv
+mc_hybrid_transformation_results\transformation_decomposition_spec.json

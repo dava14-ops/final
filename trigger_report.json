@@ -1,0 +1,88 @@
+{
+  "timestamp": "2026-08-15T17:59:54.002065+00:00",
+  "model_path": "model_params.json",
+  "claims_path": null,
+  "n_events_checked": 0,
+  "triggers": [
+    {
+      "trigger_name": "loss_ratio_deviation",
+      "triggered": true,
+      "current_value": 0.85,
+      "baseline_value": 0.65,
+      "threshold": 0.2,
+      "direction": "above",
+      "action": "recalibrate",
+      "severity": "critical",
+      "description": "Loss ratio отклоняется от ожидаемого более чем на 20%",
+      "details": {
+        "deviation": 0.3076923076923076,
+        "deviation_pct": 30.76923076923076
+      }
+    },
+    {
+      "trigger_name": "calibration_error",
+      "triggered": false,
+      "current_value": null,
+      "baseline_value": null,
+      "threshold": 0.05,
+      "direction": "above",
+      "action": "skip",
+      "severity": "info",
+      "description": "Калибровочная таблица недоступна, проверка пропущена",
+      "details": {}
+    },
+    {
+      "trigger_name": "major_share_change",
+      "triggered": false,
+      "current_value": null,
+      "baseline_value": 0.3,
+      "threshold": 0.3,
+      "direction": "above",
+      "action": "skip",
+      "severity": "info",
+      "description": "Недостаточно данных для проверки major share change. Нужны claims с major_failure_flag.",
+      "details": {}
+    },
+    {
+      "trigger_name": "f_statistic_below",
+      "triggered": false,
+      "current_value": 10099.871276229902,
+      "baseline_value": 14.18,
+      "threshold": 14.18,
+      "direction": "below",
+      "action": "none",
+      "severity": "info",
+      "description": "F-statistic ниже порога Stock-Yogo (14.18)",
+      "details": {
+        "stock_yogo_10pct": 14.18
+      }
+    },
+    {
+      "trigger_name": "instrument_drift",
+      "triggered": false,
+      "current_value": 0.20163902717094925,
+      "baseline_value": 0.20163902717094925,
+      "threshold": 0.3,
+      "direction": "above",
+      "action": "none",
+      "severity": "info",
+      "description": "Дрейф инструмента: падение partial R² более чем на 30%",
+      "details": {
+        "relative_drop": 0.0,
+        "relative_drop_pct": 0.0
+      }
+    }
+  ],
+  "summary": {
+    "total_triggers": 5,
+    "triggered_count": 1,
+    "critical_count": 1,
+    "warning_count": 0,
+    "recommended_actions": [
+      "recalibrate"
+    ],
+    "needs_recalibration": true,
+    "needs_severity_update": false,
+    "needs_mode_switch": false
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "retrain_id": "20260816_081243",
+  "request": {
+    "trigger": "manual",
+    "reason": "Manual --force flag",
+    "severity": "medium",
+    "requested_at": "2026-08-16T08:12:43.252679+00:00",
+    "metadata": {}
+  },
+  "started_at": "2026-08-16T08:12:43.252713+00:00",
+  "completed_at": "2026-08-16T08:12:43.631380+00:00",
+  "status": "skipped",
+  "old_model_version": "3.0",
+  "new_model_version": null,
+  "data_source": "insufficient",
+  "n_observations": 0,
+  "n_events": 0,
+  "km_abs_diff": null,
+  "f_statistic": null,
+  "post_fit_target_error": null,
+  "archive_path": null,
+  "new_model_path": null,
+  "error": "Real claims not available (<100 machines) and --real-only flag set. Retrain skipped.",
+  "notes": []
+}

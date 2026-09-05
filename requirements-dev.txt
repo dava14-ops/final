@@ -1,0 +1,10 @@
+# Development-only dependencies
+-r requirements.txt
+
+# Additional dev tools
+black>=23.7.0
+isort>=5.12.0
+flake8>=6.1.0
+pylint>=2.17.0
+bandit>=1.7.0
+safety>=2.3.0

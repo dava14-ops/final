@@ -1,0 +1,10 @@
+.github/workflows/ci.yml
+.github/workflows/nightly.yml
+.gitignore
+.pre-commit-config.yaml
+CHANGELOG.md
+Makefile
+codecov.yml
+pyproject.toml
+requirements-dev.txt
+requirements.txt

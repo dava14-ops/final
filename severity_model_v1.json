@@ -1,0 +1,102 @@
+{
+  "version": "1.1",
+  "source": "claims_clean.csv",
+  "created_at": "2026-08-17T17:32:13.776330",
+  "n_events": 324,
+  "n_systems": 5,
+  "systems": {
+    "гидравлика": {
+      "system": "гидравлика",
+      "n_events": 106,
+      "freq_share": 0.3271604938271605,
+      "mean_repair_cost": 61103.06216981131,
+      "median_repair_cost": 58408.795,
+      "p95_repair_cost": 116985.515,
+      "mean_downtime_hours": 20.233018867924528,
+      "major_share": 0.1509433962264151,
+      "std_repair_cost": 29886.624281795965
+    },
+    "двигатель": {
+      "system": "двигатель",
+      "n_events": 29,
+      "freq_share": 0.08950617283950617,
+      "mean_repair_cost": 176800.96758620688,
+      "median_repair_cost": 142525.0,
+      "p95_repair_cost": 338922.3279999999,
+      "mean_downtime_hours": 61.7103448275862,
+      "major_share": 0.8275862068965517,
+      "std_repair_cost": 88522.45859298135
+    },
+    "прочее": {
+      "system": "прочее",
+      "n_events": 5,
+      "freq_share": 0.015432098765432098,
+      "mean_repair_cost": 23285.07,
+      "median_repair_cost": 17541.6,
+      "p95_repair_cost": 45148.227999999996,
+      "mean_downtime_hours": 22.46,
+      "major_share": 0.0,
+      "std_repair_cost": 16099.832086605747
+    },
+    "трансмиссия": {
+      "system": "трансмиссия",
+      "n_events": 60,
+      "freq_share": 0.18518518518518517,
+      "mean_repair_cost": 132553.32600000003,
+      "median_repair_cost": 111001.125,
+      "p95_repair_cost": 277410.6465,
+      "mean_downtime_hours": 53.59333333333334,
+      "major_share": 0.6166666666666667,
+      "std_repair_cost": 70189.54261056207
+    },
+    "электроника": {
+      "system": "электроника",
+      "n_events": 124,
+      "freq_share": 0.38271604938271603,
+      "mean_repair_cost": 33059.22475806452,
+      "median_repair_cost": 29256.17,
+      "p95_repair_cost": 71314.853,
+      "mean_downtime_hours": 33.99677419354838,
+      "major_share": 0.20161290322580644,
+      "std_repair_cost": 18965.8865212659
+    }
+  },
+  "brands": {
+    "MTZ82": {
+      "brand": "MTZ82",
+      "n_events": 136,
+      "mean_repair_cost": 76557.81102941177,
+      "median_repair_cost": 50384.94,
+      "mean_downtime_hours": 40.7514705882353,
+      "major_share": 0.34558823529411764
+    },
+    "NewHollandT9": {
+      "brand": "NewHollandT9",
+      "n_events": 87,
+      "mean_repair_cost": 65160.88287356323,
+      "median_repair_cost": 44594.96,
+      "mean_downtime_hours": 38.694252873563215,
+      "major_share": 0.2988505747126437
+    },
+    "Versatile280": {
+      "brand": "Versatile280",
+      "n_events": 101,
+      "mean_repair_cost": 76161.01306930692,
+      "median_repair_cost": 57232.25,
+      "mean_downtime_hours": 25.43762376237624,
+      "major_share": 0.2871287128712871
+    }
+  },
+  "overall_mean_repair": 73373.83157407408,
+  "overall_median_repair": 51150.775,
+  "overall_p95_repair": 205839.37,
+  "overall_mean_downtime": 35.42530864197531,
+  "overall_major_share": 0.3148148148148148,
+  "overall_std_repair": 65825.0475828051,
+  "hourly_downtime_cost": 2500.0,
+  "fallback_used": true,
+  "notes": [
+    "прочее: только 5 событий (< 10), оценка нестабильна",
+    "Микро-данные сохранены (324 событий) для точного расчёта expected_covered_loss"
+  ]
+}

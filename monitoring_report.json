@@ -1,0 +1,17 @@
+{
+  "f_statistic": 1199.2944730452484,
+  "f_pvalue": 1.0709512876164407e-235,
+  "partial_r2": 0.1938004854599434,
+  "cragg_donald": 1199.2944730452484,
+  "cragg_donald_weak": false,
+  "n_obs": 5000,
+  "n_events": 4798,
+  "baseline_f": 10099.871276229902,
+  "baseline_partial_r2": 0.20163902717094925,
+  "baseline_cragg_donald": 10099.871276229902,
+  "f_drift_detected": false,
+  "f_relative_drop": 0.03887412978024506,
+  "triggers": [],
+  "recommended_iv_mode": "causal",
+  "instrument_adequate": true
+}

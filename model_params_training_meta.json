@@ -1,0 +1,604 @@
+{
+  "training_meta": {
+    "model_version": "3.0",
+    "model_semantic_version": "0.2",
+    "data_source": "hybrid_dgp_real_covariates",
+    "claims_path": null,
+    "use_real_covariates": true,
+    "weather_data_path": "data/processed/weather/weather_windows.csv",
+    "soil_data_path": "data/processed/soil/soil_windows.csv",
+    "engine_convention": "cf_cox_v3",
+    "n": 40000,
+    "seed": 12345,
+    "created": "2026-08-31T13:14:34.440377+00:00",
+    "python": "3.13.14 (tags/v3.13.14:fd17997, Jun 10 2026, 13:03:48) [MSC v.1944 64 bit (AMD64)]",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "dependencies": {
+      "numpy": "2.5.1",
+      "pandas": "2.3.3",
+      "statsmodels": "0.14.6",
+      "python": "3.13.14"
+    },
+    "dgp": {
+      "gamma": 0.5,
+      "rho": 0.7,
+      "delta": 0.5,
+      "intercept": 10.0,
+      "structural_intercept": 10.0,
+      "first_stage_z_coef": 0.5,
+      "fs_age_coef": 0.15,
+      "fs_hours_coef": 0.1,
+      "fs_climate_coef": 0.2,
+      "fs_soil_coef": 0.15,
+      "fs_brand_coef": 0.1,
+      "fs_power_coef": 0.08,
+      "beta_age": 0.2,
+      "beta_hours": 0.1,
+      "beta_climate": 0.2,
+      "beta_soil": 0.12,
+      "beta_brand": 0.06,
+      "beta_power": -0.05,
+      "beta_age_hours": 0.15,
+      "clip_lp": null,
+      "corr_zu": 0.0,
+      "baseline_shape": 1.88,
+      "baseline_family": "weibull",
+      "competing_risks": true,
+      "minor_failure_rate": 0.002,
+      "event_definition": "major_claim",
+      "segment": "light",
+      "brand_encoding": "dummies",
+      "brand_reference_code": 0,
+      "brand_prob_by_code": {
+        "0": 0.35,
+        "1": 0.08,
+        "2": 0.07,
+        "3": 0.1,
+        "4": 0.4
+      },
+      "fs_brand_coefs": null,
+      "beta_brand_coefs": null,
+      "peakload_target_mean": 0.70993820329817,
+      "peakload_target_std": 0.20533694365378774,
+      "weather_mean_days": 45.0,
+      "weather_std_days": 12.0,
+      "weather_campaign": "sowing",
+      "instrument_source": "price_bartik",
+      "price_instrument_path": "instrument_z_bartik.csv",
+      "soil_source": "soil_real",
+      "use_real_covariates": true,
+      "beta_eqi": 0.0,
+      "n_enterprises": 500,
+      "use_enterprise_quality": false
+    },
+    "contamination": false,
+    "contamination_probability": 0.0,
+    "stress_test_mode": false,
+    "baseline_family": "weibull",
+    "baseline_shape": 1.88,
+    "baseline_hazard": 2.3842857909917833e-08,
+    "censoring_scale": 897.6871324473142,
+    "event_rate": 0.01995,
+    "target_event_rate": 0.02,
+    "baseline_calibration": {
+      "method": "target_probability",
+      "target_probability": 0.028,
+      "time_horizon": 1712.0,
+      "time_unit": "engine_hours",
+      "achieved_probability": 0.037775,
+      "final_baseline": 2.3842857909917833e-08,
+      "search_lo": 1e-12,
+      "search_hi": 4.7684715819835664e-08,
+      "iterations": 22,
+      "validation_achieved_probability": 0.037975,
+      "final_error": 0.009975000000000001,
+      "censoring_scale": 897.6871324473142
+    },
+    "censoring_distortion": {
+      "target_event_rate": 0.02,
+      "achieved_event_rate": 0.01995
+    },
+    "peakload_min": 0.036337187652444446,
+    "peakload_max": 1.1970490602221897,
+    "peakload_p25": 0.6771737618873485,
+    "peakload_median": 0.8529400453046456,
+    "peakload_p75": 0.9792912059169674,
+    "transform": {
+      "type": "standardize",
+      "center": 0.8155757032981701,
+      "scale": 0.22385871454314119,
+      "ddof": 1
+    },
+    "calibration_time_horizon": 1712.0,
+    "calibration_time_horizon_days": 214.0,
+    "time_unit": "engine_hours",
+    "mtbf_input_unit": "engine_hours",
+    "mtbf_to_model_time_factor": 1.0,
+    "default_engine_hours_per_calendar_day": 8.0,
+    "model_form": "control_function",
+    "event_definition": "major_claim",
+    "competing_risks": true,
+    "minor_failure_rate": 0.002,
+    "segment": "light",
+    "segment_power_stats": {
+      "segment": "light",
+      "power_mean": 140.84925592808557,
+      "power_std": 48.4961779453469,
+      "power_min": 50.0,
+      "power_max": 350.0
+    },
+    "freq_shares": {
+      "minor": 0.7,
+      "major": 0.3
+    },
+    "severity_weights": {
+      "minor": 0.25,
+      "major": 1.0
+    },
+    "rf_heavy_brand_catalog": {
+      "Кировец К-744Р": {
+        "power_hp": 340.0,
+        "share": 0.425,
+        "years": "2006-2008"
+      },
+      "John Deere 8430": {
+        "power_hp": 295.0,
+        "share": 0.248,
+        "years": "2007"
+      },
+      "New Holland T8/T9": {
+        "power_hp": 303.0,
+        "share": 0.124,
+        "years": "2006-2008"
+      },
+      "Bühler Versatile 2425": {
+        "power_hp": 425.0,
+        "share": 0.106,
+        "years": "2007"
+      },
+      "АТМ-5280": {
+        "power_hp": 280.0,
+        "share": 0.053,
+        "years": "2005-2009"
+      },
+      "Fendt 930 Vario": {
+        "power_hp": 300.0,
+        "share": 0.044,
+        "years": "2005"
+      }
+    },
+    "mtbf_baseline_hours": 1500.0,
+    "downtime_model": "mttr",
+    "power_segment_threshold": 150.0,
+    "kaplan_meier_validator_enabled": true,
+    "tum_peakload_calibration": {
+      "enabled": true,
+      "target_mean": 0.70993820329817,
+      "target_std": 0.20533694365378774,
+      "source": "data\\processed\\tum\\tum_peakload_stats.json"
+    },
+    "calibration_target_probability": 0.028,
+    "calibration_method": "probability",
+    "iv_diagnostics": {
+      "f_statistic": 10126.82701141627,
+      "f_pvalue": 0.0,
+      "f_statistic_weak": false,
+      "cragg_donald_stat": 10126.82701141627,
+      "cragg_donald_weak": false,
+      "anderson_rubin_stat": 19.19489738500124,
+      "anderson_rubin_pvalue": 1.180284618253265e-05,
+      "endogenous": true,
+      "instrument_adequate": true,
+      "f_statistic_cluster_robust": 4250.9615975164725,
+      "p_value_cluster_robust": 0.0,
+      "n_clusters": 165,
+      "pi_z_cluster_robust": 0.41133134716847225,
+      "se_pi_z_cluster_robust": 0.00630882117085435,
+      "partial_f_z": 10126.82701141627
+    },
+    "iv_mode": "predictive",
+    "interaction_lr_test": {
+      "lr_stat": 36.74207245973412,
+      "df": 1,
+      "p_value": 1.3483781426227792e-09,
+      "aic_full": 13986.778718563775,
+      "aic_restricted": 14021.52079102351,
+      "beta_hat": 0.19746712186262327,
+      "se_hat": 0.032457538147620334,
+      "penalized": false,
+      "penalizer_used": 0.0,
+      "n": 40000,
+      "n_events": 798,
+      "note": null
+    },
+    "iv_mode_candidates": [
+      "causal",
+      "predictive"
+    ],
+    "weather_instrument_validated": false,
+    "iv_baseline": {
+      "f_statistic": 10126.82701141627,
+      "partial_r2": 0.20206844055690076,
+      "cragg_donald": 10126.82701141627,
+      "n": 40000,
+      "monitored": true,
+      "drift_relative_drop_threshold": 0.3
+    },
+    "iv_baseline_partial_r2": 0.20206844055690076,
+    "instrument_strength_initial": 0.5,
+    "instrument_strength_final": 0.5,
+    "weak_instrument_auto_corrected": false,
+    "weak_instrument_fixed": false,
+    "n_events": 798,
+    "ph_diagnostics": {
+      "method": "Schoenfeld residual test (Grambsch-Therneau)",
+      "alpha": 0.05,
+      "time_transform": "rank",
+      "n": 40000,
+      "n_events": 798,
+      "global_test": {
+        "test_statistic": 16.744512744501822,
+        "p_value": 0.15946324319888677,
+        "df": 12,
+        "reject_at_alpha": false
+      },
+      "variables": {
+        "PeakLoad": {
+          "test_statistic": 1.2109382013557912,
+          "p_value": 0.27114639308907384,
+          "reject_at_alpha": false,
+          "status": "PASS"
+        },
+        "brand_DT75": {
+          "test_statistic": 0.46066859142080013,
+          "p_value": 0.4973116717859969,
+          "reject_at_alpha": false,
+          "status": "PASS"
+        },
+        "brand_NewHollandT9": {
+          "test_statistic": 0.0024088529618936363,
+          "p_value": 0.9608554886106578,
+          "reject_at_alpha": false,
+          "status": "PASS"
+        },
+        "brand_Other": {
+          "test_statistic": 0.004244340177120557,
+          "p_value": 0.9480556848064217,
+          "reject_at_alpha": false,
+          "status": "PASS"
+        },
+        "brand_Versatile280": {
+          "test_statistic": 0.07042288640322923,
+          "p_value": 0.7907220504905268,
+          "reject_at_alpha": false,
+          "status": "PASS"
+        },
+        "v_hat": {
+          "test_statistic": 7.692056434238887,
+          "p_value": 0.005546439407495983,
+          "reject_at_alpha": true,
+          "status": "FAIL"
+        },
+        "x_age": {
+          "test_statistic": 1.4286257566864606,
+          "p_value": 0.23198884668736858,
+          "reject_at_alpha": false,
+          "status": "PASS"
+        },
+        "x_age_hours": {
+          "test_statistic": 0.01840632653939922,
+          "p_value": 0.8920822300778496,
+          "reject_at_alpha": false,
+          "status": "PASS"
+        },
+        "x_climate": {
+          "test_statistic": 0.9053009429909589,
+          "p_value": 0.3413642988053508,
+          "reject_at_alpha": false,
+          "status": "PASS"
+        },
+        "x_hours": {
+          "test_statistic": 0.8055190273581817,
+          "p_value": 0.3694483767614932,
+          "reject_at_alpha": false,
+          "status": "PASS"
+        },
+        "x_power": {
+          "test_statistic": 1.9933575790231017,
+          "p_value": 0.15799025728612837,
+          "reject_at_alpha": false,
+          "status": "PASS"
+        },
+        "x_soil": {
+          "test_statistic": 2.152563805345999,
+          "p_value": 0.14233204043304917,
+          "reject_at_alpha": false,
+          "status": "PASS"
+        }
+      },
+      "violations": [
+        "v_hat"
+      ],
+      "status": "FAIL",
+      "multiple_testing_correction": "bonferroni",
+      "alpha_corrected": 0.004166666666666667,
+      "n_tests": 12,
+      "primary_covariates_ph_ok": false,
+      "error": "PRIMARY covariates violate PH: ['v_hat']. Model specification must be revised.",
+      "available": true
+    },
+    "x_standardization": {
+      "x_age": {
+        "raw_col": "Age",
+        "shift": 10.0,
+        "scale": 10.0
+      },
+      "x_hours": {
+        "raw_col": "Hours",
+        "shift": 1000.0,
+        "scale": 1000.0
+      },
+      "PeakLoad": {
+        "raw_col": "PeakLoad",
+        "shift": 0.55,
+        "scale": 0.15
+      },
+      "x_climate": {
+        "raw_col": "Climate",
+        "shift": null,
+        "scale": null
+      },
+      "x_soil": {
+        "raw_col": "Soil",
+        "shift": null,
+        "scale": null
+      },
+      "x_power": {
+        "raw_col": "Power",
+        "shift": 200.0,
+        "scale": 150.0
+      },
+      "x_brand": {
+        "raw_col": "Brand",
+        "shift": 2.0,
+        "scale": 2.0
+      },
+      "x_age_hours": {
+        "raw_col": "Age_x_Hours",
+        "shift": null,
+        "scale": null
+      }
+    },
+    "brand_mapping": {
+      "MTZ82": 0,
+      "Versatile280": 1,
+      "NewHollandT9": 2,
+      "DT75": 3,
+      "Other": 4
+    },
+    "brand_map": {
+      "0": "MTZ82",
+      "1": "Versatile280",
+      "2": "NewHollandT9",
+      "3": "DT75",
+      "4": "Other"
+    },
+    "brand_encoding": "dummies",
+    "brand_prob_by_code": {
+      "0": 0.35,
+      "1": 0.08,
+      "2": 0.07,
+      "3": 0.1,
+      "4": 0.4
+    },
+    "covariate_mapping": {
+      "age_years": "x_age",
+      "hours": "x_hours",
+      "age_hours": "x_age_hours",
+      "climate_index": "x_climate",
+      "soil_index": "x_soil",
+      "power": "x_power",
+      "brand": "x_brand"
+    },
+    "climate_index_reference": {
+      "минимальная": 0.0,
+      "минимальный": 0.0,
+      "умеренный": 0.25,
+      "умеренная": 0.25,
+      "холодный": 0.6,
+      "холодная": 0.6,
+      "тропический": 0.85,
+      "тропическая": 0.85,
+      "максимальная": 1.0,
+      "максимальный": 1.0
+    },
+    "soil_index_reference": {
+      "минимальная": 0.0,
+      "минимальный": 0.0,
+      "глинистая": 0.35,
+      "суглинистая": 0.5,
+      "песчаная": 1.0,
+      "максимальная": 1.0,
+      "максимальный": 1.0
+    },
+    "soil_source": "soil_real",
+    "instrument_type": "price_bartik",
+    "price_instrument": {
+      "source_file": "instrument_z_bartik.csv",
+      "basket_crops": [
+        "wheat_total",
+        "barley_total",
+        "maize_grain",
+        "sunflower_grain"
+      ],
+      "baseline_period": "2015-2017",
+      "price_lag_years": 1,
+      "n_regions": 11,
+      "excluded_regions": [
+        "Тверская область",
+        "Волгоградская область",
+        "Псковская область",
+        "Ленинградская область",
+        "Амурская область"
+      ]
+    },
+    "regions_mis": [
+      "Поволжье",
+      "Северный Кавказ",
+      "Северо-Запад",
+      "Центрально-Чернозёмная зона",
+      "Кубань",
+      "Алтай",
+      "Амурская область",
+      "Владимирский регион"
+    ],
+    "region_usage": "stratification_only",
+    "region_note": "Не используется как трактор-уровневая ковариата до получения первичных протоколов МИС.",
+    "climate_soil_validation_status": "unvalidated_simulation",
+    "climate_soil_note": "Beta-распределения, не валидированы на реальных данных.",
+    "cox_peakload_convention": "observed_peakload",
+    "residual_policy_production": "plug-in",
+    "allow_diagnostic_residual_policies": false,
+    "linear_cf_standardized": true,
+    "cf_basis": {
+      "requested_v_hat_basis": "linear",
+      "v_hat_basis": "linear",
+      "v_hat_cols": [
+        "v_hat"
+      ],
+      "residuals_mean": 2.3645085889256733e-15,
+      "residuals_std": 0.8172661640232263,
+      "v_hat_col_std_params": {
+        "v_hat": {
+          "mean": 2.3645085889256733e-15,
+          "std": 0.8172661640232263,
+          "standardize": true
+        }
+      },
+      "linear_standardized": true,
+      "cf_standardization_convention": "residual_mean_std",
+      "residual_policy_production": "plug-in",
+      "cox_peakload_convention": "observed_peakload",
+      "center_peakload": null,
+      "interaction_params": {
+        "x_age_mean": -0.7497075000000001,
+        "x_hours_mean": 0.05419648971377005,
+        "x_age_hours_mean": -0.00013262112072673352,
+        "x_age_hours_std": 0.10257902330934025
+      },
+      "training_residuals_std": 0.8172661640232263,
+      "training_residuals_mean": 2.3645085889256733e-15,
+      "requested_v_hat_basis_params": {}
+    },
+    "allow_baseline_extrapolation": false,
+    "baseline_spec": {
+      "family": "weibull",
+      "params": {
+        "lambda": 4.459923298128279e-08,
+        "shape": 1.8198509246704186
+      },
+      "fit_r2": 0.9950965262121075,
+      "fit_rmse_log": 0.1434226046137142,
+      "max_fitted_time": 10232.370618504174,
+      "n_fit_points": 39226
+    },
+    "bootstrap_se_enabled": true,
+    "bootstrap_se_n": 200,
+    "allow_assumed_time_unit": false,
+    "peakload_interpretation_note": "Cox coefficient for PeakLoad (γ) refers to STANDARDIZED PeakLoad (mean=0, std=1). It represents the log-hazard ratio for a one-standard-deviation increase in PeakLoad, not a one-unit increase. To compute the effect of Δ raw units: log_HR ≈ γ * (Δ / training_std).",
+    "interaction_params": {
+      "x_age_mean": -0.7497075000000001,
+      "x_hours_mean": 0.05419648971377005,
+      "x_age_hours_mean": -0.00013262112072673352,
+      "x_age_hours_std": 0.10257902330934025
+    },
+    "interaction_centering": {
+      "x_age_mean": -0.7497075000000001,
+      "x_hours_mean": 0.05419648971377005,
+      "x_age_hours_mean": -0.00013262112072673352,
+      "x_age_hours_std": 0.10257902330934025
+    },
+    "major_failure_share": 0.030526554698138902,
+    "major_failure_share_observed": 0.030220404453533287,
+    "major_failure_share_posterior": {
+      "prior_alpha": 9.0,
+      "prior_beta": 21.0,
+      "prior_mean": 0.3,
+      "prior_effective_n": 30.0,
+      "n_events": 26406,
+      "n_major": 798,
+      "observed_share": 0.030220404453533287,
+      "posterior_alpha": 807.0,
+      "posterior_beta": 25629.0,
+      "posterior_mean": 0.030526554698138902,
+      "ci_low": 0.028486700238267635,
+      "ci_high": 0.03263368531098866
+    },
+    "major_failure_share_by_brand": {
+      "3": 0.8235294117647058,
+      "4": 0.944,
+      "0": 0.9252669039145908,
+      "2": 0.7586206896551724,
+      "1": 0.7558139534883721
+    },
+    "major_failure_share_by_brand_observed": {
+      "3": 1.0,
+      "4": 1.0,
+      "0": 1.0,
+      "2": 1.0,
+      "1": 1.0
+    },
+    "major_failure_share_by_brand_posterior": {
+      "3": {
+        "n_events": 89,
+        "n_major": 89,
+        "observed_share": 1.0,
+        "posterior_alpha": 98.0,
+        "posterior_beta": 21.0,
+        "posterior_mean": 0.8235294117647058
+      },
+      "4": {
+        "n_events": 345,
+        "n_major": 345,
+        "observed_share": 1.0,
+        "posterior_alpha": 354.0,
+        "posterior_beta": 21.0,
+        "posterior_mean": 0.944
+      },
+      "0": {
+        "n_events": 251,
+        "n_major": 251,
+        "observed_share": 1.0,
+        "posterior_alpha": 260.0,
+        "posterior_beta": 21.0,
+        "posterior_mean": 0.9252669039145908
+      },
+      "2": {
+        "n_events": 57,
+        "n_major": 57,
+        "observed_share": 1.0,
+        "posterior_alpha": 66.0,
+        "posterior_beta": 21.0,
+        "posterior_mean": 0.7586206896551724
+      },
+      "1": {
+        "n_events": 56,
+        "n_major": 56,
+        "observed_share": 1.0,
+        "posterior_alpha": 65.0,
+        "posterior_beta": 21.0,
+        "posterior_mean": 0.7558139534883721
+      }
+    },
+    "major_failure_share_prior": {
+      "alpha": 9.0,
+      "beta": 21.0,
+      "mean": 0.3,
+      "ci_low": 0.15284593960863152,
+      "ci_high": 0.47238448243003384,
+      "effective_n": 30.0
+    },
+    "post_fit_average_probability": 0.0535194192284026,
+    "post_fit_target_error": 0.0255194192284026
+  }
+}

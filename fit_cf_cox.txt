@@ -1,0 +1,151 @@
+=== LINE 1162: def fit_cf_cox( ===
+1163:     data: pd.DataFrame,
+1164:     residuals: np.ndarray,
+1165:     cox_se_threshold: float = COX_SE_THRESHOLD_DEFAULT,
+1166:     quick: bool = False,
+1167:     return_cf_model: bool = False,
+1168:     center_peakload: Optional[float] = None,
+1169:     v_hat_basis: str = "linear",
+1170:     v_hat_basis_params: Optional[Dict[str, Any]] = None,
+1171:     fitted_first_stage: Any = None,
+1172: ):
+1173:     """
+1174:     Fit control-function Cox model: h(t|x) = h0(t) * exp(gamma * D + lambda * eps_D_hat + beta_x * X).
+1175: 
+1176:     Model specification (Issue #2):
+1177:       D     = observed treatment (PeakLoad)
+1178:       eps_D_hat = first-stage residuals = PeakLoad - PL_hat
+1179:       X     = structural covariates (Age, Hours, Climate, Soil, Brand, Power)
+1180: 
+1181:     The control function eps_D_hat captures the endogenous component of D.
+1182:     Testing lambda != 0 is equivalent to testing for endogeneity.
+1183: 
+1184:     Control function basis options:
+1185:       - "linear"   : single mean-centered eps_D_hat (default)
+1186:       - "spline"   : B-spline basis of standardized eps_D_hat
+1187:       - "powers"   : polynomial basis of standardized eps_D_hat
+1188: 
+1189:     Standard error:
+1190:       - Model-based SE from lifelines does NOT account for first-stage
+1191:         estimation uncertainty. Use case bootstrap as primary SE method.
+1192:       - No ad hoc two-stage correction is applied — bootstrap handles this.
+1193: 
+1194:     Backward compatibility:
+1195:       - return_cf_model=False (default) -> returns legacy tuple:
+1196:          (gamma_hat, se, rho_hat, cph, max_se)
+1197:       - return_cf_model=True -> returns CFModelResult dataclass.
+1198:     """
+1199:     # FIX (S1): Warn about small sample size for IV-Cox.
+1200:     # With n < 1000 and event_rate ~ 0.3, only ~300 events remain.
+1201:     # IV-Cox requires more events than standard Cox due to additional
+1202:     # parameters (PL_hat_exog + v_hat). Harrell's rule of thumb:
+1203:     # 10 events per parameter, minimum 50 events total.
+1204:     n = len(data)
+1205:     n_events = int(np.sum(np.asarray(data["event"].astype(int))))
+1206:     if n_events < 100:
+1207:         logger.warning(
+1208:             f"Small sample warning: only {n_events} events in {len(data)} observations. "
+1209:             "IV-Cox estimates may be unstable with few events. "
+1210:             "Recommend at least 200 events for reliable inference."
+1211:         )
+1212: 
+1213:     # Validate inputs
+1214:     if residuals is None:
+1215:         raise ValueError("Residuals must be provided to fit_cf_cox.")
+1216:     residuals = np.asarray(residuals).reshape(-1)
+1217:     if len(residuals) != len(data):
+1218:         raise ValueError("Residuals length does not match number of rows in data.")
+1219:     if not np.all(np.isfinite(residuals)):
+1220:         raise ValueError("Residuals contain NaN or Inf.")
+1221: 
+1222:     # Ensure required columns exist
+1223:     required_cols = {"time", "event", "PeakLoad"}
+1224:     missing = required_cols - set(data.columns)
+1225:     if missing:
+1226:         raise KeyError(f"fit_cf_cox missing required columns: {sorted(missing)}")
+1227: 
+1228:     # Prepare model_data (make a shallow copy to avoid mutating caller's DF)
+1229:     model_data = data[["time", "event", "PeakLoad"]].copy()
+1230: 
+1231:     # Structural model: h(t|x) = h0(t) * exp(gamma * D + lambda * eps_D_hat + beta_x * X)
+1232:     # D = observed PeakLoad (raw treatment, not PL_hat_exog)
+1233:     # eps_D_hat = first-stage residual = PeakLoad - PL_hat
+1234:     pl_hat_raw = np.asarray(model_data["PeakLoad"].astype(float)) - residuals
+1235: 
+1236:     # FIX 3.1: Use standardized X columns to match DGP.
+1237:     # DGP generates structural equation with STANDARDIZED X:
+1238:     #   x_age = (age - 7.5) / 7.5
+1239:     #   x_hours = (hours - 500.0) / 500.0
+1240:     #   x_climate = climate
+1241:     #   x_soil = soil
+1242:     #   x_brand = (brand - 2.0) / 2.0
+1243:     #   x_power = (power - 200.0) / 150.0
+1244:     # Cox coefficients must be estimated on the same scale as DGP parameters
+1245:     # for correct interpretation and comparison.
+1246:     STD_X_COLS = [
+1247:         ("x_age", "Age", 7.5),
+1248:         ("x_hours", "Hours", 500.0),
+1249:         ("x_climate", "Climate", None),
+1250:         ("x_soil", "Soil", None),
+1251:         ("x_brand", "Brand", 2.0),
+1252:         ("x_power", "Power", 200.0),
+1253:     ]
+1254:     for col_name, raw_col, shift in STD_X_COLS:
+1255:         if col_name in data.columns:
+1256:             model_data[col_name] = np.asarray(data[col_name].astype(float))
+1257:         elif raw_col in data.columns:
+1258:             # Backward compatibility: if standardized columns are missing,
+1259:             # standardize raw X on-the-fly to match DGP scaling.
+1260:             raw_vals = np.asarray(data[raw_col].astype(float))
+1261:             if col_name in ("x_climate", "x_soil"):
+1262:                 model_data[col_name] = raw_vals
+1263:             elif col_name == "x_brand":
+1264:                 model_data[col_name] = (raw_vals - shift) / 2.0
+1265:             elif col_name == "x_power":
+1266:                 model_data[col_name] = (raw_vals - shift) / 150.0
+1267:             elif col_name == "x_age":
+1268:                 model_data[col_name] = (raw_vals - shift) / 7.5
+1269:             elif col_name == "x_hours":
+1270:                 model_data[col_name] = (raw_vals - shift) / 500.0
+1271: 
+1272:     # PeakLoad stays as raw D (observed treatment variable)
+1273:     # Optional center PeakLoad to stabilize exp(beta * PeakLoad)
+1274:     if center_peakload is not None:
+1275:         try:
+1276:             cp = float(center_peakload)
+1277:             model_data["PeakLoad"] = model_data["PeakLoad"] - cp
+1278:         except Exception:
+1279:             raise ValueError("center_peakload must be numeric if provided.")
+1280: 
+1281:     # Prepare control function basis for eps_D_hat (raw first-stage residuals).
+1282:     # For linear basis: mean-center only (not standardized) — matches DGP scale.
+1283:     # For spline/powers: standardize for knot placement, then store metadata.
+1284:     cf_cols = _build_cf_columns(pl_hat_raw, v_hat_basis, v_hat_basis_params, model_data)
+1285:     model_data = cf_cols.df_with_cf
+1286:     v_hat_cols = cf_cols.column_names
+1287:     training_residuals_std = cf_cols.residuals_std
+1288: 
+1289:     # Basic event check
+1290:     n_events = int(np.sum(model_data["event"].to_numpy(dtype=int)))
+1291:     if n_events < 1:
+1292:         raise RuntimeError("CF Cox: zero events in sample")
+1293: 
+1294:     # FIX 1.1: Define `n` (sample size) for two-stage correction and other uses.
+1295:     n = len(model_data)
+1296: 
+1297:     # FIX 1.6: Early exit if any required computed value is NaN/Inf.
+1298:     if not np.isfinite(float(pl_hat_raw.mean())):
+1299:         logger.debug("fit_cf_cox: pl_hat mean is non-finite, skipping.")
+1300:         raise RuntimeError("fit_cf_cox: pl_hat statistics are non-finite.")
+1301: 
+1302:     # Try penalizers in increasing regularization until fit succeeds
+1303:     penalizers_to_try = _QUICK_PENALIZERS if quick else _ALL_PENALIZERS
+1304:     attempted_penalizers: List[float] = []
+1305:     last_exc: Optional[BaseException] = None
+1306:     last_warns: List[str] = []
+1307: 
+1308:     for pen in penalizers_to_try:
+1309:         attempted_penalizers.append(float(pen))
+1310:         try:
+1311:             cph = CoxPHFitter(penalizer=pen)
+1312:             # fit; adjust duration_col/event_col if your names differ

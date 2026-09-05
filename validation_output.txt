@@ -1,0 +1,1896 @@
+INFO | Discovered 143 field CSV files.
+INFO | Loading data\raw\tum\Fendt 211\Power harrowing\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 211\Power harrowing\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 211\Precision air seeding\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 211\Precision air seeding\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 314\Disc harrowing\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 314\Disc harrowing\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 314\Disc harrowing\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 314\Fertilizing\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 314\Fertilizing\Field_10.csv
+INFO | Loading data\raw\tum\Fendt 314\Fertilizing\Field_11.csv
+INFO | Loading data\raw\tum\Fendt 314\Fertilizing\Field_12.csv
+INFO | Loading data\raw\tum\Fendt 314\Fertilizing\Field_13.csv
+INFO | Loading data\raw\tum\Fendt 314\Fertilizing\Field_14.csv
+INFO | Loading data\raw\tum\Fendt 314\Fertilizing\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 314\Fertilizing\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 314\Fertilizing\Field_4.csv
+INFO | Loading data\raw\tum\Fendt 314\Fertilizing\Field_5.csv
+INFO | Loading data\raw\tum\Fendt 314\Fertilizing\Field_6.csv
+INFO | Loading data\raw\tum\Fendt 314\Fertilizing\Field_7.csv
+INFO | Loading data\raw\tum\Fendt 314\Fertilizing\Field_8.csv
+INFO | Loading data\raw\tum\Fendt 314\Fertilizing\Field_9.csv
+INFO | Loading data\raw\tum\Fendt 314\Mowing (front)\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 314\Mowing (large-scale)\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 314\Mowing (large-scale)\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 314\Mowing (large-scale)\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 314\Seed drill combination\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 314\Seed drill combination\Field_10.csv
+INFO | Loading data\raw\tum\Fendt 314\Seed drill combination\Field_11.csv
+INFO | Loading data\raw\tum\Fendt 314\Seed drill combination\Field_12.csv
+INFO | Loading data\raw\tum\Fendt 314\Seed drill combination\Field_13.csv
+INFO | Loading data\raw\tum\Fendt 314\Seed drill combination\Field_14.csv
+INFO | Loading data\raw\tum\Fendt 314\Seed drill combination\Field_15.csv
+INFO | Loading data\raw\tum\Fendt 314\Seed drill combination\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 314\Seed drill combination\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 314\Seed drill combination\Field_4.csv
+INFO | Loading data\raw\tum\Fendt 314\Seed drill combination\Field_5.csv
+INFO | Loading data\raw\tum\Fendt 314\Seed drill combination\Field_6.csv
+INFO | Loading data\raw\tum\Fendt 314\Seed drill combination\Field_7.csv
+INFO | Loading data\raw\tum\Fendt 314\Seed drill combination\Field_8.csv
+INFO | Loading data\raw\tum\Fendt 314\Seed drill combination\Field_9.csv
+INFO | Loading data\raw\tum\Fendt 314\Spraying\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 314\Spraying\Field_10.csv
+INFO | Loading data\raw\tum\Fendt 314\Spraying\Field_11.csv
+INFO | Loading data\raw\tum\Fendt 314\Spraying\Field_12.csv
+INFO | Loading data\raw\tum\Fendt 314\Spraying\Field_13.csv
+INFO | Loading data\raw\tum\Fendt 314\Spraying\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 314\Spraying\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 314\Spraying\Field_4.csv
+INFO | Loading data\raw\tum\Fendt 314\Spraying\Field_5.csv
+INFO | Loading data\raw\tum\Fendt 314\Spraying\Field_6.csv
+INFO | Loading data\raw\tum\Fendt 314\Spraying\Field_7.csv
+INFO | Loading data\raw\tum\Fendt 314\Spraying\Field_8.csv
+INFO | Loading data\raw\tum\Fendt 314\Spraying\Field_9.csv
+INFO | Loading data\raw\tum\Fendt 314\Swathing\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 314\Swathing\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 314\Transport\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 314\Transport\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 314\Transport\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 722\Cultivating (deep)\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 722\Cultivating (deep)\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 722\Cultivating (deep)\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 722\Cultivating (deep)\Field_4.csv
+INFO | Loading data\raw\tum\Fendt 722\Cultivating (shallow)\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 722\Cultivating (shallow)\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 722\Cultivating (shallow)\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 722\Cultivating (shallow)\Field_4.csv
+INFO | Loading data\raw\tum\Fendt 722\Cultivating (shallow)\Field_5.csv
+INFO | Loading data\raw\tum\Fendt 722\Disc harrowing\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 722\Disc harrowing\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 722\Disc harrowing\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 722\Fertilizing\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 722\Fertilizing\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 722\Fertilizing\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 722\Fertilizing\Field_4.csv
+INFO | Loading data\raw\tum\Fendt 722\Fertilizing\Field_5.csv
+INFO | Loading data\raw\tum\Fendt 722\Fertilizing\Field_6.csv
+INFO | Loading data\raw\tum\Fendt 722\Mulching\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 722\Mulching\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 722\Mulching\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 722\Mulching\Field_4.csv
+INFO | Loading data\raw\tum\Fendt 722\Mulching\Field_5.csv
+INFO | Loading data\raw\tum\Fendt 722\Mulching\Field_6.csv
+INFO | Loading data\raw\tum\Fendt 722\Mulching\Field_7.csv
+INFO | Loading data\raw\tum\Fendt 722\Ploughing\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 722\Ploughing\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 722\Ploughing\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 722\Ploughing\Field_4.csv
+INFO | Loading data\raw\tum\Fendt 722\Ploughing\Field_5.csv
+INFO | Loading data\raw\tum\Fendt 722\Ploughing\Field_6.csv
+INFO | Loading data\raw\tum\Fendt 722\Power harrowing\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 722\Power harrowing\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 722\Power harrowing\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 722\Seed drill combination 3m\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 722\Seed drill combination 3m\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 722\Seed drill combination 3m\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 722\Seed drill combination 3m\Field_4.csv
+INFO | Loading data\raw\tum\Fendt 722\Seed drill combination 3m\Field_5.csv
+INFO | Loading data\raw\tum\Fendt 722\Seed drill combination 3m\Field_6.csv
+INFO | Loading data\raw\tum\Fendt 722\Seed drill combination 4m\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 722\Seed drill combination 4m\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 722\Seed drill combination 4m\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 722\Seed drill combination 4m\Field_4.csv
+INFO | Loading data\raw\tum\Fendt 722\Seed drill combination 4m\Field_5.csv
+INFO | Loading data\raw\tum\Fendt 722\Seed drill combination 4m\Field_6.csv
+INFO | Loading data\raw\tum\Fendt 722\Seedbed combination\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 722\Seedbed combination\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 722\Seedbed combination\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 722\Transport\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 722\Transport\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 722\Transport\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 722\Transport\Field_4.csv
+INFO | Loading data\raw\tum\Fendt 724\Cultivating (deep)\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 724\Ploughing\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 724\Ploughing\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 724\Ploughing\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 724\Ploughing\Field_4.csv
+INFO | Loading data\raw\tum\Fendt 724\Ploughing\Field_5.csv
+INFO | Loading data\raw\tum\Fendt 724\Transport\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 724\Transport\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 820\Cultivating (deep)\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 820\Cultivating (deep)\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 820\Cultivating (deep)\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 820\Cultivating (deep)\Field_4.csv
+INFO | Loading data\raw\tum\Fendt 820\Cultivating (deep)\Field_5.csv
+INFO | Loading data\raw\tum\Fendt 820\Cultivating (deep)\Field_6.csv
+INFO | Loading data\raw\tum\Fendt 820\Cultivating (deep)\Field_7.csv
+INFO | Loading data\raw\tum\Fendt 820\Cultivating (deep)\Field_8.csv
+INFO | Loading data\raw\tum\Fendt 820\Mulching\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 820\Mulching\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 820\Mulching\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 820\Mulching\Field_4.csv
+INFO | Loading data\raw\tum\Fendt 820\Mulching\Field_5.csv
+INFO | Loading data\raw\tum\Fendt 820\Mulching\Field_6.csv
+INFO | Loading data\raw\tum\Fendt 820\Mulching\Field_7.csv
+INFO | Loading data\raw\tum\Fendt 820\Mulching\Field_8.csv
+INFO | Loading data\raw\tum\Fendt 820\Ploughing\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 820\Ploughing\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 820\Ploughing\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 820\Rotary tilling\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 820\Rotary tilling\Field_2.csv
+INFO | Loading data\raw\tum\Fendt 820\Rotary tilling\Field_3.csv
+INFO | Loading data\raw\tum\Fendt 820\Seed drill combination\Field_1.csv
+INFO | Loading data\raw\tum\Fendt 820\Seedbed combination\Field_1.csv
+
+==============================================================================
+TUM ETL v0.1 — VALIDATION
+==============================================================================
+
+Fendt 211 | Power harrowing | Field_1
+  rows:              49,846
+  duration:          9480.9 s
+  sampling rate:     9.99999999996362 Hz
+  working:           43,884
+  turning:           3,609
+  residual:          2,353
+  time gaps:         1,088
+  engine load valid: 49,846
+  warnings:
+    - Large time gaps: 1088
+
+Fendt 211 | Power harrowing | Field_2
+  rows:              25,417
+  duration:          5896.6 s
+  sampling rate:     9.999999999997726 Hz
+  working:           17,780
+  turning:           3,005
+  residual:          4,632
+  time gaps:         4,326
+  engine load valid: 25,417
+  warnings:
+    - Large time gaps: 4326
+
+Fendt 211 | Precision air seeding | Field_1
+  rows:              14,315
+  duration:          33817.1 s
+  sampling rate:     2.0 Hz
+  working:           10,068
+  turning:           1,467
+  residual:          2,780
+  time gaps:         8,811
+  engine load valid: 14,315
+  warnings:
+    - Large time gaps: 8811
+    - Estimated sampling rate 2.000 Hz is outside expected ~10 Hz.
+
+Fendt 211 | Precision air seeding | Field_2
+  rows:              9,273
+  duration:          2017.4 s
+  sampling rate:     9.999999999997726 Hz
+  working:           3,234
+  turning:           2,684
+  residual:          3,355
+  time gaps:         591
+  engine load valid: 9,273
+  warnings:
+    - Large time gaps: 591
+
+unknown | Disc harrowing | Field_1
+  rows:              52,601
+  duration:          30655.5 s
+  sampling rate:     10.00000000014552 Hz
+  working:           0
+  turning:           6,060
+  residual:          46,541
+  time gaps:         492
+  engine load valid: 52,601
+  warnings:
+    - Large time gaps: 492
+
+unknown | Disc harrowing | Field_2
+  rows:              64,215
+  duration:          9989.7 s
+  sampling rate:     9.999999999997726 Hz
+  working:           49,991
+  turning:           7,268
+  residual:          6,956
+  time gaps:         1,698
+  engine load valid: 64,215
+  warnings:
+    - Large time gaps: 1698
+
+unknown | Disc harrowing | Field_3
+  rows:              79,825
+  duration:          9334.8 s
+  sampling rate:     9.999999999997726 Hz
+  working:           68,415
+  turning:           5,005
+  residual:          6,405
+  time gaps:         843
+  engine load valid: 79,825
+  warnings:
+    - Large time gaps: 843
+
+unknown | Fertilizing | Field_1
+  rows:              14,674
+  duration:          2243.6 s
+  sampling rate:     9.999999999997726 Hz
+  working:           1,182
+  turning:           857
+  residual:          12,635
+  time gaps:         741
+  engine load valid: 14,674
+  warnings:
+    - Large time gaps: 741
+
+unknown | Fertilizing | Field_10
+  rows:              23,680
+  duration:          3980.1 s
+  sampling rate:     10.000000000009095 Hz
+  working:           10
+  turning:           183
+  residual:          23,487
+  time gaps:         874
+  engine load valid: 23,680
+  warnings:
+    - Large time gaps: 874
+
+unknown | Fertilizing | Field_11
+  rows:              17,865
+  duration:          7037.4 s
+  sampling rate:     10.00000000000341 Hz
+  working:           96
+  turning:           22
+  residual:          17,747
+  time gaps:         326
+  engine load valid: 17,865
+  warnings:
+    - Large time gaps: 326
+
+unknown | Fertilizing | Field_12
+  rows:              13,017
+  duration:          5731.8 s
+  sampling rate:     10.000000000009095 Hz
+  working:           75
+  turning:           555
+  residual:          12,387
+  time gaps:         413
+  engine load valid: 13,017
+  warnings:
+    - Large time gaps: 413
+
+unknown | Fertilizing | Field_13
+  rows:              8,801
+  duration:          3605.2 s
+  sampling rate:     9.999999999999947 Hz
+  working:           85
+  turning:           0
+  residual:          8,716
+  time gaps:         235
+  engine load valid: 8,801
+  warnings:
+    - Large time gaps: 235
+
+unknown | Fertilizing | Field_14
+  rows:              9,354
+  duration:          1225.9 s
+  sampling rate:     9.999999999997726 Hz
+  working:           242
+  turning:           0
+  residual:          9,112
+  time gaps:         194
+  engine load valid: 9,354
+  warnings:
+    - Large time gaps: 194
+
+unknown | Fertilizing | Field_2
+  rows:              25,903
+  duration:          10705.2 s
+  sampling rate:     9.99999999996362 Hz
+  working:           7,516
+  turning:           312
+  residual:          18,075
+  time gaps:         393
+  engine load valid: 25,903
+  warnings:
+    - Large time gaps: 393
+
+unknown | Fertilizing | Field_3
+  rows:              16,457
+  duration:          2437.6 s
+  sampling rate:     9.999999999997726 Hz
+  working:           4,499
+  turning:           127
+  residual:          11,831
+  time gaps:         439
+  engine load valid: 16,457
+  warnings:
+    - Large time gaps: 439
+
+unknown | Fertilizing | Field_4
+  rows:              38,669
+  duration:          7707.3 s
+  sampling rate:     9.999999999997726 Hz
+  working:           11,034
+  turning:           380
+  residual:          27,255
+  time gaps:         626
+  engine load valid: 38,669
+  warnings:
+    - Large time gaps: 626
+
+unknown | Fertilizing | Field_5
+  rows:              24,472
+  duration:          7103.8 s
+  sampling rate:     9.999999999997726 Hz
+  working:           3,955
+  turning:           331
+  residual:          20,186
+  time gaps:         429
+  engine load valid: 24,472
+  warnings:
+    - Large time gaps: 429
+
+unknown | Fertilizing | Field_6
+  rows:              4,244
+  duration:          613.6 s
+  sampling rate:     9.999999999997726 Hz
+  working:           817
+  turning:           18
+  residual:          3,409
+  time gaps:         125
+  engine load valid: 4,244
+  warnings:
+    - Large time gaps: 125
+
+unknown | Fertilizing | Field_7
+  rows:              20,696
+  duration:          3301.4 s
+  sampling rate:     10.00000000000341 Hz
+  working:           2,936
+  turning:           92
+  residual:          17,668
+  time gaps:         783
+  engine load valid: 20,696
+  warnings:
+    - Large time gaps: 783
+
+unknown | Fertilizing | Field_8
+  rows:              10,487
+  duration:          1472.5 s
+  sampling rate:     9.999999999997726 Hz
+  working:           1,718
+  turning:           0
+  residual:          8,769
+  time gaps:         300
+  engine load valid: 10,487
+  warnings:
+    - Large time gaps: 300
+
+unknown | Fertilizing | Field_9
+  rows:              20,204
+  duration:          3788.9 s
+  sampling rate:     9.999999999997726 Hz
+  working:           8
+  turning:           1,696
+  residual:          18,500
+  time gaps:         885
+  engine load valid: 20,204
+  warnings:
+    - Large time gaps: 885
+
+unknown | Mowing (front) | Field_1
+  rows:              17,100
+  duration:          2909.5 s
+  sampling rate:     9.999999999997726 Hz
+  working:           16,044
+  turning:           528
+  residual:          528
+  time gaps:         118
+  engine load valid: 17,100
+  warnings:
+    - Large time gaps: 118
+
+unknown | Mowing (large-scale) | Field_1
+  rows:              21,675
+  duration:          4581.9 s
+  sampling rate:     9.999999999997726 Hz
+  working:           21,634
+  turning:           0
+  residual:          41
+  time gaps:         975
+  engine load valid: 21,675
+  warnings:
+    - Large time gaps: 975
+
+unknown | Mowing (large-scale) | Field_2
+  rows:              19,439
+  duration:          3008.0 s
+  sampling rate:     9.999999999997726 Hz
+  working:           19,361
+  turning:           0
+  residual:          78
+  time gaps:         1,023
+  engine load valid: 19,439
+  warnings:
+    - Large time gaps: 1023
+
+unknown | Mowing (large-scale) | Field_3
+  rows:              17,761
+  duration:          2901.3 s
+  sampling rate:     10.000000000009095 Hz
+  working:           17,651
+  turning:           0
+  residual:          110
+  time gaps:         741
+  engine load valid: 17,761
+  warnings:
+    - Large time gaps: 741
+
+unknown | Seed drill combination | Field_1
+  rows:              37,788
+  duration:          7459.5 s
+  sampling rate:     9.999999999997726 Hz
+  working:           25,799
+  turning:           5,413
+  residual:          6,576
+  time gaps:         1,967
+  engine load valid: 37,788
+  warnings:
+    - Large time gaps: 1967
+
+unknown | Seed drill combination | Field_10
+  rows:              29,495
+  duration:          17213.4 s
+  sampling rate:     9.99999999996362 Hz
+  working:           19,834
+  turning:           4,501
+  residual:          5,160
+  time gaps:         1,797
+  engine load valid: 29,495
+  warnings:
+    - Large time gaps: 1797
+
+unknown | Seed drill combination | Field_11
+  rows:              43,471
+  duration:          21870.4 s
+  sampling rate:     9.999999999997726 Hz
+  working:           30,630
+  turning:           8,825
+  residual:          4,016
+  time gaps:         4,413
+  engine load valid: 43,471
+  warnings:
+    - Large time gaps: 4413
+
+unknown | Seed drill combination | Field_12
+  rows:              64,171
+  duration:          15160.9 s
+  sampling rate:     9.99999999996362 Hz
+  working:           40,888
+  turning:           11,011
+  residual:          12,272
+  time gaps:         5,950
+  engine load valid: 64,171
+  warnings:
+    - Large time gaps: 5950
+
+unknown | Seed drill combination | Field_13
+  rows:              137,543
+  duration:          24664.9 s
+  sampling rate:     9.99999999996362 Hz
+  working:           105,905
+  turning:           11,690
+  residual:          19,948
+  time gaps:         4,718
+  engine load valid: 137,543
+  warnings:
+    - Large time gaps: 4718
+
+unknown | Seed drill combination | Field_14
+  rows:              39,467
+  duration:          7265.9 s
+  sampling rate:     9.999999999986358 Hz
+  working:           34,205
+  turning:           2,074
+  residual:          3,188
+  time gaps:         1,658
+  engine load valid: 39,467
+  warnings:
+    - Large time gaps: 1658
+
+unknown | Seed drill combination | Field_15
+  rows:              23,060
+  duration:          3930.5 s
+  sampling rate:     10.000000000009095 Hz
+  working:           17,597
+  turning:           1,601
+  residual:          3,862
+  time gaps:         1,381
+  engine load valid: 23,060
+  warnings:
+    - Large time gaps: 1381
+
+unknown | Seed drill combination | Field_2
+  rows:              91,838
+  duration:          68590.0 s
+  sampling rate:     9.999999999417923 Hz
+  working:           67,975
+  turning:           11,604
+  residual:          12,259
+  time gaps:         8,459
+  engine load valid: 91,838
+  warnings:
+    - Large time gaps: 8459
+
+unknown | Seed drill combination | Field_3
+  rows:              61,339
+  duration:          14545187.7 s
+  sampling rate:     9.99999999996362 Hz
+  working:           29,836
+  turning:           11,539
+  residual:          19,964
+  time gaps:         11,568
+  engine load valid: 61,339
+  warnings:
+    - Large time gaps: 11568
+
+unknown | Seed drill combination | Field_4
+  rows:              52,892
+  duration:          8216.3 s
+  sampling rate:     10.000000000009095 Hz
+  working:           38,100
+  turning:           7,358
+  residual:          7,434
+  time gaps:         2,005
+  engine load valid: 52,892
+  warnings:
+    - Large time gaps: 2005
+
+unknown | Seed drill combination | Field_5
+  rows:              40,434
+  duration:          5639.6 s
+  sampling rate:     10.000000000009095 Hz
+  working:           28,873
+  turning:           8,637
+  residual:          2,924
+  time gaps:         1,237
+  engine load valid: 40,434
+  warnings:
+    - Large time gaps: 1237
+
+unknown | Seed drill combination | Field_6
+  rows:              130,303
+  duration:          103513.1 s
+  sampling rate:     9.999999999417923 Hz
+  working:           91,723
+  turning:           11,409
+  residual:          27,171
+  time gaps:         15,739
+  engine load valid: 130,303
+  warnings:
+    - Large time gaps: 15739
+
+unknown | Seed drill combination | Field_7
+  rows:              534,374
+  duration:          15663608.7 s
+  sampling rate:     10.00000000014552 Hz
+  working:           433,097
+  turning:           42,218
+  residual:          59,059
+  time gaps:         16,398
+  engine load valid: 534,374
+  warnings:
+    - Negative time deltas: 1
+    - Large time gaps: 16398
+
+unknown | Seed drill combination | Field_8
+  rows:              8,662
+  duration:          1927.0 s
+  sampling rate:     9.999999999997726 Hz
+  working:           3,612
+  turning:           2,162
+  residual:          2,888
+  time gaps:         780
+  engine load valid: 8,662
+  warnings:
+    - Large time gaps: 780
+
+unknown | Seed drill combination | Field_9
+  rows:              70,568
+  duration:          205535.8 s
+  sampling rate:     9.999999999781721 Hz
+  working:           35,055
+  turning:           11,876
+  residual:          23,637
+  time gaps:         7,370
+  engine load valid: 70,568
+  warnings:
+    - Large time gaps: 7370
+
+unknown | Spraying | Field_1
+  rows:              23,685
+  duration:          340069.3 s
+  sampling rate:     9.999999999997726 Hz
+  working:           137
+  turning:           74
+  residual:          23,474
+  time gaps:         880
+  engine load valid: 23,685
+  warnings:
+    - Large time gaps: 880
+
+unknown | Spraying | Field_10
+  rows:              3,742
+  duration:          920.2 s
+  sampling rate:     9.999999999997726 Hz
+  working:           2,798
+  turning:           278
+  residual:          666
+  time gaps:         551
+  engine load valid: 3,742
+  warnings:
+    - Large time gaps: 551
+
+unknown | Spraying | Field_11
+  rows:              6,255
+  duration:          1628.1 s
+  sampling rate:     9.999999999997726 Hz
+  working:           4,559
+  turning:           380
+  residual:          1,316
+  time gaps:         1,414
+  engine load valid: 6,255
+  warnings:
+    - Large time gaps: 1414
+
+unknown | Spraying | Field_12
+  rows:              8,238
+  duration:          4593.3 s
+  sampling rate:     9.999999999997726 Hz
+  working:           487
+  turning:           659
+  residual:          7,092
+  time gaps:         467
+  engine load valid: 8,238
+  warnings:
+    - Large time gaps: 467
+
+unknown | Spraying | Field_13
+  rows:              13,487
+  duration:          2257.0 s
+  sampling rate:     9.999999999997726 Hz
+  working:           1,325
+  turning:           71
+  residual:          12,091
+  time gaps:         669
+  engine load valid: 13,487
+  warnings:
+    - Large time gaps: 669
+
+unknown | Spraying | Field_2
+  rows:              19,209
+  duration:          1810954.5 s
+  sampling rate:     9.999999990686774 Hz
+  working:           759
+  turning:           1,834
+  residual:          16,616
+  time gaps:         1,017
+  engine load valid: 19,209
+  warnings:
+    - Large time gaps: 1017
+
+unknown | Spraying | Field_3
+  rows:              9,662
+  duration:          1804584.7 s
+  sampling rate:     9.999999999997726 Hz
+  working:           36
+  turning:           152
+  residual:          9,474
+  time gaps:         723
+  engine load valid: 9,662
+  warnings:
+    - Large time gaps: 723
+
+unknown | Spraying | Field_4
+  rows:              58,748
+  duration:          1815671.9 s
+  sampling rate:     9.99999999996362 Hz
+  working:           1,540
+  turning:           195
+  residual:          57,013
+  time gaps:         5,684
+  engine load valid: 58,748
+  warnings:
+    - Large time gaps: 5684
+
+unknown | Spraying | Field_5
+  rows:              46,302
+  duration:          691919.5 s
+  sampling rate:     9.99999999996362 Hz
+  working:           4,183
+  turning:           532
+  residual:          41,587
+  time gaps:         6,663
+  engine load valid: 46,302
+  warnings:
+    - Large time gaps: 6663
+
+unknown | Spraying | Field_6
+  rows:              7,672
+  duration:          2321.3 s
+  sampling rate:     9.999999999997726 Hz
+  working:           30
+  turning:           43
+  residual:          7,599
+  time gaps:         362
+  engine load valid: 7,672
+  warnings:
+    - Large time gaps: 362
+
+unknown | Spraying | Field_7
+  rows:              14,999
+  duration:          7112.4 s
+  sampling rate:     9.99999999996362 Hz
+  working:           569
+  turning:           126
+  residual:          14,304
+  time gaps:         3,282
+  engine load valid: 14,999
+  warnings:
+    - Large time gaps: 3282
+
+unknown | Spraying | Field_8
+  rows:              5,093
+  duration:          1476.0 s
+  sampling rate:     9.999999999997726 Hz
+  working:           3,486
+  turning:           149
+  residual:          1,458
+  time gaps:         924
+  engine load valid: 5,093
+  warnings:
+    - Large time gaps: 924
+
+unknown | Spraying | Field_9
+  rows:              4,492
+  duration:          970.3 s
+  sampling rate:     9.999999999997726 Hz
+  working:           3,580
+  turning:           326
+  residual:          586
+  time gaps:         403
+  engine load valid: 4,492
+  warnings:
+    - Large time gaps: 403
+
+unknown | Swathing | Field_1
+  rows:              96,729
+  duration:          15770.9 s
+  sampling rate:     9.99999999996362 Hz
+  working:           269
+  turning:           9,401
+  residual:          87,059
+  time gaps:         990
+  engine load valid: 96,729
+  warnings:
+    - Large time gaps: 990
+
+unknown | Swathing | Field_2
+  rows:              17,350
+  duration:          3459.0 s
+  sampling rate:     10.000000000009095 Hz
+  working:           0
+  turning:           0
+  residual:          17,350
+  time gaps:         225
+  engine load valid: 17,350
+  warnings:
+    - Large time gaps: 225
+
+unknown | Transport | Field_1
+  rows:              270,044
+  duration:          None s
+  sampling rate:     None Hz
+  working:           0
+  turning:           0
+  residual:          0
+  time gaps:         0
+  engine load valid: 270,044
+  warnings:
+    - Status column not found.
+
+unknown | Transport | Field_2
+  rows:              197,111
+  duration:          None s
+  sampling rate:     None Hz
+  working:           0
+  turning:           0
+  residual:          0
+  time gaps:         0
+  engine load valid: 197,111
+  warnings:
+    - Status column not found.
+
+unknown | Transport | Field_3
+  rows:              132,118
+  duration:          None s
+  sampling rate:     None Hz
+  working:           0
+  turning:           0
+  residual:          0
+  time gaps:         0
+  engine load valid: 132,118
+  warnings:
+    - Status column not found.
+
+unknown | Cultivating (deep) | Field_1
+  rows:              290,749
+  duration:          3021519.8 s
+  sampling rate:     9.99999999650754 Hz
+  working:           193,068
+  turning:           23,473
+  residual:          74,208
+  time gaps:         1,379
+  engine load valid: 290,749
+  warnings:
+    - Large time gaps: 1379
+
+unknown | Cultivating (deep) | Field_2
+  rows:              203,154
+  duration:          253328.3 s
+  sampling rate:     9.99999999996362 Hz
+  working:           172,060
+  turning:           8,151
+  residual:          22,943
+  time gaps:         520
+  engine load valid: 203,154
+  warnings:
+    - Large time gaps: 520
+
+unknown | Cultivating (deep) | Field_3
+  rows:              125,746
+  duration:          69222.1 s
+  sampling rate:     10.000000000009095 Hz
+  working:           97,965
+  turning:           15,415
+  residual:          12,366
+  time gaps:         354
+  engine load valid: 125,746
+  warnings:
+    - Large time gaps: 354
+
+unknown | Cultivating (deep) | Field_4
+  rows:              26,699
+  duration:          2869.4 s
+  sampling rate:     10.00000000000341 Hz
+  working:           24,058
+  turning:           991
+  residual:          1,650
+  time gaps:         45
+  engine load valid: 26,699
+  warnings:
+    - Large time gaps: 45
+
+unknown | Cultivating (shallow) | Field_1
+  rows:              202,962
+  duration:          451117.6 s
+  sampling rate:     9.999999999781721 Hz
+  working:           137,737
+  turning:           22,092
+  residual:          43,133
+  time gaps:         766
+  engine load valid: 202,962
+  warnings:
+    - Large time gaps: 766
+
+unknown | Cultivating (shallow) | Field_2
+  rows:              226,214
+  duration:          181947.0 s
+  sampling rate:     9.999999999417923 Hz
+  working:           151,941
+  turning:           30,619
+  residual:          43,654
+  time gaps:         708
+  engine load valid: 226,214
+  warnings:
+    - Large time gaps: 708
+
+unknown | Cultivating (shallow) | Field_3
+  rows:              25,167
+  duration:          2775.9 s
+  sampling rate:     9.999999999999902 Hz
+  working:           17,222
+  turning:           195
+  residual:          7,750
+  time gaps:         116
+  engine load valid: 25,167
+  warnings:
+    - Large time gaps: 116
+
+unknown | Cultivating (shallow) | Field_4
+  rows:              2,094
+  duration:          274.6 s
+  sampling rate:     10.000000000000568 Hz
+  working:           1,211
+  turning:           465
+  residual:          418
+  time gaps:         17
+  engine load valid: 2,094
+  warnings:
+    - Large time gaps: 17
+
+unknown | Cultivating (shallow) | Field_5
+  rows:              94,189
+  duration:          13835.4 s
+  sampling rate:     9.99999999996362 Hz
+  working:           63,125
+  turning:           11,852
+  residual:          19,212
+  time gaps:         399
+  engine load valid: 94,189
+  warnings:
+    - Large time gaps: 399
+
+unknown | Disc harrowing | Field_1
+  rows:              106,987
+  duration:          11857.0 s
+  sampling rate:     9.999999999986358 Hz
+  working:           97,770
+  turning:           3,098
+  residual:          6,119
+  time gaps:         148
+  engine load valid: 0
+  warnings:
+    - Large time gaps: 148
+
+unknown | Disc harrowing | Field_2
+  rows:              96,901
+  duration:          10575.3 s
+  sampling rate:     9.999999999997726 Hz
+  working:           74,328
+  turning:           6,392
+  residual:          16,181
+  time gaps:         105
+  engine load valid: 0
+  warnings:
+    - Large time gaps: 105
+
+unknown | Disc harrowing | Field_3
+  rows:              34,507
+  duration:          3925.5 s
+  sampling rate:     10.000000000009095 Hz
+  working:           28,614
+  turning:           1,932
+  residual:          3,961
+  time gaps:         55
+  engine load valid: 0
+  warnings:
+    - Large time gaps: 55
+
+unknown | Fertilizing | Field_1
+  rows:              11,903
+  duration:          38331.9 s
+  sampling rate:     9.99999999996362 Hz
+  working:           0
+  turning:           478
+  residual:          11,425
+  time gaps:         376
+  engine load valid: 0
+  warnings:
+    - Large time gaps: 376
+
+unknown | Fertilizing | Field_2
+  rows:              15,354
+  duration:          2233.4 s
+  sampling rate:     10.000000000000568 Hz
+  working:           0
+  turning:           0
+  residual:          15,354
+  time gaps:         54
+  engine load valid: 0
+  warnings:
+    - Large time gaps: 54
+
+unknown | Fertilizing | Field_3
+  rows:              27,008
+  duration:          37884.0 s
+  sampling rate:     10.000000000009095 Hz
+  working:           0
+  turning:           7
+  residual:          27,001
+  time gaps:         149
+  engine load valid: 0
+  warnings:
+    - Large time gaps: 149
+
+unknown | Fertilizing | Field_4
+  rows:              18,483
+  duration:          5228.5 s
+  sampling rate:     10.00000000000341 Hz
+  working:           0
+  turning:           9,334
+  residual:          9,149
+  time gaps:         98
+  engine load valid: 0
+  warnings:
+    - Large time gaps: 98
+
+unknown | Fertilizing | Field_5
+  rows:              11,986
+  duration:          1246.8 s
+  sampling rate:     9.999999999997726 Hz
+  working:           0
+  turning:           0
+  residual:          11,986
+  time gaps:         54
+  engine load valid: 0
+  warnings:
+    - Large time gaps: 54
+
+unknown | Fertilizing | Field_6
+  rows:              92,569
+  duration:          28432.8 s
+  sampling rate:     10.000000000009095 Hz
+  working:           0
+  turning:           5,708
+  residual:          86,861
+  time gaps:         275
+  engine load valid: 0
+  warnings:
+    - Large time gaps: 275
+
+unknown | Mulching | Field_1
+  rows:              203,075
+  duration:          1484087.7 s
+  sampling rate:     9.99999999996362 Hz
+  working:           171,933
+  turning:           5,862
+  residual:          25,280
+  time gaps:         355
+  engine load valid: 203,075
+  warnings:
+    - Large time gaps: 355
+
+unknown | Mulching | Field_2
+  rows:              153,590
+  duration:          531501.4 s
+  sampling rate:     10.000000000009095 Hz
+  working:           114,983
+  turning:           5,186
+  residual:          33,421
+  time gaps:         252
+  engine load valid: 153,590
+  warnings:
+    - Large time gaps: 252
+
+unknown | Mulching | Field_3
+  rows:              27,089
+  duration:          3379.4 s
+  sampling rate:     10.00000000000341 Hz
+  working:           16,889
+  turning:           1,819
+  residual:          8,381
+  time gaps:         225
+  engine load valid: 27,089
+  warnings:
+    - Large time gaps: 225
+
+unknown | Mulching | Field_4
+  rows:              210,153
+  duration:          1374786.6 s
+  sampling rate:     10.000000000009095 Hz
+  working:           153,673
+  turning:           7,970
+  residual:          48,510
+  time gaps:         443
+  engine load valid: 210,153
+  warnings:
+    - Large time gaps: 443
+
+unknown | Mulching | Field_5
+  rows:              161,394
+  duration:          1295902.2 s
+  sampling rate:     9.99999999996362 Hz
+  working:           119,062
+  turning:           7,110
+  residual:          35,222
+  time gaps:         343
+  engine load valid: 161,394
+  warnings:
+    - Large time gaps: 343
+
+unknown | Mulching | Field_6
+  rows:              48,346
+  duration:          12398.8 s
+  sampling rate:     9.99999999996362 Hz
+  working:           43,956
+  turning:           735
+  residual:          3,655
+  time gaps:         93
+  engine load valid: 48,346
+  warnings:
+    - Large time gaps: 93
+
+unknown | Mulching | Field_7
+  rows:              49,263
+  duration:          5440.9 s
+  sampling rate:     10.000000000009095 Hz
+  working:           25,190
+  turning:           1,621
+  residual:          22,452
+  time gaps:         139
+  engine load valid: 49,263
+  warnings:
+    - Large time gaps: 139
+
+unknown | Ploughing | Field_1
+  rows:              392,534
+  duration:          635113.2 s
+  sampling rate:     10.00000000005457 Hz
+  working:           182,486
+  turning:           13,856
+  residual:          196,192
+  time gaps:         381
+  engine load valid: 392,534
+  warnings:
+    - Large time gaps: 381
+
+unknown | Ploughing | Field_2
+  rows:              316,283
+  duration:          430470.3 s
+  sampling rate:     10.000000000009095 Hz
+  working:           268,371
+  turning:           30,796
+  residual:          17,116
+  time gaps:         498
+  engine load valid: 316,283
+  warnings:
+    - Large time gaps: 498
+
+unknown | Ploughing | Field_3
+  rows:              107,350
+  duration:          13031.8 s
+  sampling rate:     9.999999999986358 Hz
+  working:           97,357
+  turning:           1,233
+  residual:          8,760
+  time gaps:         130
+  engine load valid: 107,350
+  warnings:
+    - Large time gaps: 130
+
+unknown | Ploughing | Field_4
+  rows:              424,790
+  duration:          119756.7 s
+  sampling rate:     9.99999999996362 Hz
+  working:           345,610
+  turning:           45,637
+  residual:          33,543
+  time gaps:         871
+  engine load valid: 424,790
+  warnings:
+    - Large time gaps: 871
+
+unknown | Ploughing | Field_5
+  rows:              58,889
+  duration:          6796.2 s
+  sampling rate:     10.000000000000568 Hz
+  working:           46,157
+  turning:           4,897
+  residual:          7,835
+  time gaps:         117
+  engine load valid: 58,889
+  warnings:
+    - Large time gaps: 117
+
+unknown | Ploughing | Field_6
+  rows:              158,998
+  duration:          22607.7 s
+  sampling rate:     9.999999999997726 Hz
+  working:           105,549
+  turning:           29,523
+  residual:          23,926
+  time gaps:         669
+  engine load valid: 158,998
+  warnings:
+    - Large time gaps: 669
+
+unknown | Power harrowing | Field_1
+  rows:              20,081
+  duration:          28746.9 s
+  sampling rate:     10.00000000014552 Hz
+  working:           9,961
+  turning:           1,940
+  residual:          8,180
+  time gaps:         455
+  engine load valid: 0
+  warnings:
+    - Large time gaps: 455
+
+unknown | Power harrowing | Field_2
+  rows:              80,645
+  duration:          78649.2 s
+  sampling rate:     9.99999999996362 Hz
+  working:           70,818
+  turning:           2,168
+  residual:          7,659
+  time gaps:         426
+  engine load valid: 0
+  warnings:
+    - Large time gaps: 426
+
+unknown | Power harrowing | Field_3
+  rows:              61,076
+  duration:          7525.5 s
+  sampling rate:     9.999999999997726 Hz
+  working:           46,604
+  turning:           2,916
+  residual:          11,556
+  time gaps:         72
+  engine load valid: 0
+  warnings:
+    - Large time gaps: 72
+
+unknown | Seed drill combination 3m | Field_1
+  rows:              319,486
+  duration:          12965543.7 s
+  sampling rate:     10.000000037252903 Hz
+  working:           222,707
+  turning:           41,487
+  residual:          55,292
+  time gaps:         1,362
+  engine load valid: 319,486
+  warnings:
+    - Negative time deltas: 1
+    - Large time gaps: 1362
+
+unknown | Seed drill combination 3m | Field_2
+  rows:              321,952
+  duration:          13137484.1 s
+  sampling rate:     10.00000000005457 Hz
+  working:           207,189
+  turning:           36,806
+  residual:          77,957
+  time gaps:         1,263
+  engine load valid: 321,952
+  warnings:
+    - Large time gaps: 1263
+
+unknown | Seed drill combination 3m | Field_3
+  rows:              627,295
+  duration:          13490615.0 s
+  sampling rate:     10.000000002328306 Hz
+  working:           404,195
+  turning:           91,681
+  residual:          131,419
+  time gaps:         1,928
+  engine load valid: 627,295
+  warnings:
+    - Large time gaps: 1928
+
+unknown | Seed drill combination 3m | Field_4
+  rows:              12,922
+  duration:          1590.7 s
+  sampling rate:     9.999999999997726 Hz
+  working:           6,865
+  turning:           2,534
+  residual:          3,523
+  time gaps:         93
+  engine load valid: 12,922
+  warnings:
+    - Large time gaps: 93
+
+unknown | Seed drill combination 3m | Field_5
+  rows:              23,126
+  duration:          4181.6 s
+  sampling rate:     10.000000000009095 Hz
+  working:           8,841
+  turning:           887
+  residual:          13,398
+  time gaps:         194
+  engine load valid: 23,126
+  warnings:
+    - Large time gaps: 194
+
+unknown | Seed drill combination 3m | Field_6
+  rows:              84,788
+  duration:          24478.6 s
+  sampling rate:     9.99999999996362 Hz
+  working:           57,021
+  turning:           22,018
+  residual:          5,749
+  time gaps:         311
+  engine load valid: 84,788
+  warnings:
+    - Large time gaps: 311
+
+unknown | Seed drill combination 4m | Field_1
+  rows:              92,491
+  duration:          10355.8 s
+  sampling rate:     9.999999999986358 Hz
+  working:           77,668
+  turning:           3,645
+  residual:          11,178
+  time gaps:         219
+  engine load valid: 92,491
+  warnings:
+    - Large time gaps: 219
+
+unknown | Seed drill combination 4m | Field_2
+  rows:              16,936
+  duration:          2500.3 s
+  sampling rate:     10.000000000000568 Hz
+  working:           12,503
+  turning:           1,726
+  residual:          2,707
+  time gaps:         90
+  engine load valid: 16,936
+  warnings:
+    - Large time gaps: 90
+
+unknown | Seed drill combination 4m | Field_3
+  rows:              176,820
+  duration:          33819.0 s
+  sampling rate:     9.999999999999858 Hz
+  working:           147,671
+  turning:           15,375
+  residual:          13,774
+  time gaps:         399
+  engine load valid: 176,820
+  warnings:
+    - Large time gaps: 399
+
+unknown | Seed drill combination 4m | Field_4
+  rows:              52,069
+  duration:          7544.4 s
+  sampling rate:     10.000000000000568 Hz
+  working:           40,959
+  turning:           6,406
+  residual:          4,704
+  time gaps:         138
+  engine load valid: 52,069
+  warnings:
+    - Large time gaps: 138
+
+unknown | Seed drill combination 4m | Field_5
+  rows:              132,823
+  duration:          22684.5 s
+  sampling rate:     9.99999999996362 Hz
+  working:           110,490
+  turning:           13,344
+  residual:          8,989
+  time gaps:         215
+  engine load valid: 132,823
+  warnings:
+    - Large time gaps: 215
+
+unknown | Seed drill combination 4m | Field_6
+  rows:              230,290
+  duration:          33322.6 s
+  sampling rate:     9.999999999986358 Hz
+  working:           208,266
+  turning:           16,607
+  residual:          5,417
+  time gaps:         212
+  engine load valid: 230,290
+  warnings:
+    - Large time gaps: 212
+
+unknown | Seedbed combination | Field_1
+  rows:              451,243
+  duration:          18839560.7 s
+  sampling rate:     9.999999999417923 Hz
+  working:           319,185
+  turning:           44,992
+  residual:          87,066
+  time gaps:         2,227
+  engine load valid: 354,683
+  warnings:
+    - Large time gaps: 2227
+
+unknown | Seedbed combination | Field_2
+  rows:              113,132
+  duration:          16564.2 s
+  sampling rate:     9.99999999996362 Hz
+  working:           86,916
+  turning:           9,912
+  residual:          16,304
+  time gaps:         850
+  engine load valid: 113,132
+  warnings:
+    - Large time gaps: 850
+
+unknown | Seedbed combination | Field_3
+  rows:              130,687
+  duration:          17674.0 s
+  sampling rate:     9.99999999996362 Hz
+  working:           116,416
+  turning:           2,131
+  residual:          12,140
+  time gaps:         138
+  engine load valid: 130,687
+  warnings:
+    - Large time gaps: 138
+
+unknown | Transport | Field_1
+  rows:              144,547
+  duration:          None s
+  sampling rate:     None Hz
+  working:           0
+  turning:           0
+  residual:          0
+  time gaps:         0
+  engine load valid: 144,547
+  warnings:
+    - Status column not found.
+
+unknown | Transport | Field_2
+  rows:              233,966
+  duration:          None s
+  sampling rate:     None Hz
+  working:           0
+  turning:           0
+  residual:          0
+  time gaps:         0
+  engine load valid: 233,966
+  warnings:
+    - Status column not found.
+
+unknown | Transport | Field_3
+  rows:              227,748
+  duration:          None s
+  sampling rate:     None Hz
+  working:           0
+  turning:           0
+  residual:          0
+  time gaps:         0
+  engine load valid: 227,748
+  warnings:
+    - Status column not found.
+
+unknown | Transport | Field_4
+  rows:              106,698
+  duration:          None s
+  sampling rate:     None Hz
+  working:           0
+  turning:           0
+  residual:          0
+  time gaps:         0
+  engine load valid: 106,698
+  warnings:
+    - Status column not found.
+
+unknown | Cultivating (deep) | Field_1
+  rows:              141,876
+  duration:          20423.6 s
+  sampling rate:     9.99999999996362 Hz
+  working:           130,758
+  turning:           8,799
+  residual:          2,319
+  time gaps:         3,341
+  engine load valid: 141,876
+  warnings:
+    - Large time gaps: 3341
+
+unknown | Ploughing | Field_1
+  rows:              52,588
+  duration:          97538.5 s
+  sampling rate:     9.99999999996362 Hz
+  working:           37,100
+  turning:           4,495
+  residual:          10,993
+  time gaps:         3,314
+  engine load valid: 52,588
+  warnings:
+    - Large time gaps: 3314
+
+unknown | Ploughing | Field_2
+  rows:              91,755
+  duration:          84613.3 s
+  sampling rate:     9.99999999996362 Hz
+  working:           59,412
+  turning:           9,825
+  residual:          22,518
+  time gaps:         6,389
+  engine load valid: 91,755
+  warnings:
+    - Large time gaps: 6389
+
+unknown | Ploughing | Field_3
+  rows:              88,269
+  duration:          90814.8 s
+  sampling rate:     9.99999999996362 Hz
+  working:           63,591
+  turning:           10,207
+  residual:          14,471
+  time gaps:         7,253
+  engine load valid: 88,269
+  warnings:
+    - Large time gaps: 7253
+
+unknown | Ploughing | Field_4
+  rows:              69,525
+  duration:          14846.4 s
+  sampling rate:     9.99999999996362 Hz
+  working:           50,088
+  turning:           3,899
+  residual:          15,538
+  time gaps:         3,933
+  engine load valid: 69,525
+  warnings:
+    - Large time gaps: 3933
+
+unknown | Ploughing | Field_5
+  rows:              59,479
+  duration:          12348.1 s
+  sampling rate:     9.99999999996362 Hz
+  working:           39,913
+  turning:           8,113
+  residual:          11,453
+  time gaps:         2,104
+  engine load valid: 59,479
+  warnings:
+    - Large time gaps: 2104
+
+unknown | Transport | Field_1
+  rows:              237,568
+  duration:          None s
+  sampling rate:     None Hz
+  working:           0
+  turning:           0
+  residual:          0
+  time gaps:         0
+  engine load valid: 237,568
+  warnings:
+    - Status column not found.
+
+unknown | Transport | Field_2
+  rows:              214,438
+  duration:          None s
+  sampling rate:     None Hz
+  working:           0
+  turning:           0
+  residual:          0
+  time gaps:         0
+  engine load valid: 214,438
+  warnings:
+    - Status column not found.
+
+Fendt 820 | Cultivating (deep) | Field_1
+  rows:              108,053
+  duration:          1059000.9 s
+  sampling rate:     5.000000000027285 Hz
+  working:           86,525
+  turning:           0
+  residual:          21,528
+  time gaps:         4,578
+  engine load valid: 108,053
+  warnings:
+    - Large time gaps: 4578
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Cultivating (deep) | Field_2
+  rows:              80,978
+  duration:          8918970.4 s
+  sampling rate:     5.000000000000284 Hz
+  working:           57,909
+  turning:           0
+  residual:          23,069
+  time gaps:         4,614
+  engine load valid: 80,978
+  warnings:
+    - Large time gaps: 4614
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Cultivating (deep) | Field_3
+  rows:              120,472
+  duration:          1028925.0 s
+  sampling rate:     5.0000000000045475 Hz
+  working:           114,816
+  turning:           0
+  residual:          5,656
+  time gaps:         2,686
+  engine load valid: 120,472
+  warnings:
+    - Large time gaps: 2686
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Cultivating (deep) | Field_4
+  rows:              128,596
+  duration:          2161197.8 s
+  sampling rate:     4.99999999998181 Hz
+  working:           98,537
+  turning:           0
+  residual:          30,059
+  time gaps:         4,170
+  engine load valid: 77,966
+  warnings:
+    - Large time gaps: 4170
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Cultivating (deep) | Field_5
+  rows:              58,301
+  duration:          7524587.6 s
+  sampling rate:     4.999999995343387 Hz
+  working:           48,905
+  turning:           0
+  residual:          9,396
+  time gaps:         1,450
+  engine load valid: 58,301
+  warnings:
+    - Large time gaps: 1450
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Cultivating (deep) | Field_6
+  rows:              304,845
+  duration:          7806222.8 s
+  sampling rate:     4.99999999998181 Hz
+  working:           220,960
+  turning:           0
+  residual:          83,885
+  time gaps:         14,504
+  engine load valid: 231,525
+  warnings:
+    - Negative time deltas: 1
+    - Large time gaps: 14504
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Cultivating (deep) | Field_7
+  rows:              146,246
+  duration:          170693.8 s
+  sampling rate:     5.0000000000045475 Hz
+  working:           105,656
+  turning:           0
+  residual:          40,590
+  time gaps:         4,789
+  engine load valid: 136,268
+  warnings:
+    - Large time gaps: 4789
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Cultivating (deep) | Field_8
+  rows:              3,031
+  duration:          1078.7 s
+  sampling rate:     4.999999999998863 Hz
+  working:           1,945
+  turning:           0
+  residual:          1,086
+  time gaps:         123
+  engine load valid: 3,031
+  warnings:
+    - Large time gaps: 123
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Mulching | Field_1
+  rows:              15,171
+  duration:          3103.0 s
+  sampling rate:     4.999999999998863 Hz
+  working:           10,968
+  turning:           0
+  residual:          4,203
+  time gaps:         320
+  engine load valid: 15,171
+  warnings:
+    - Large time gaps: 320
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Mulching | Field_2
+  rows:              3,952
+  duration:          821.1 s
+  sampling rate:     5.000000000000284 Hz
+  working:           2,668
+  turning:           0
+  residual:          1,284
+  time gaps:         95
+  engine load valid: 3,952
+  warnings:
+    - Large time gaps: 95
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Mulching | Field_3
+  rows:              27,377
+  duration:          6781.0 s
+  sampling rate:     5.000000000001705 Hz
+  working:           17,928
+  turning:           0
+  residual:          9,449
+  time gaps:         731
+  engine load valid: 27,377
+  warnings:
+    - Large time gaps: 731
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Mulching | Field_4
+  rows:              5,937
+  duration:          1898.5 s
+  sampling rate:     4.999999999998863 Hz
+  working:           0
+  turning:           0
+  residual:          5,937
+  time gaps:         355
+  engine load valid: 5,937
+  warnings:
+    - Large time gaps: 355
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Mulching | Field_5
+  rows:              19,601
+  duration:          4663.7 s
+  sampling rate:     4.999999999999574 Hz
+  working:           11,681
+  turning:           0
+  residual:          7,920
+  time gaps:         1,033
+  engine load valid: 19,601
+  warnings:
+    - Large time gaps: 1033
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Mulching | Field_6
+  rows:              11,947
+  duration:          2961.7 s
+  sampling rate:     4.999999999998863 Hz
+  working:           0
+  turning:           0
+  residual:          11,947
+  time gaps:         547
+  engine load valid: 0
+  warnings:
+    - Large time gaps: 547
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Mulching | Field_7
+  rows:              15,381
+  duration:          3207.0 s
+  sampling rate:     4.999999999998863 Hz
+  working:           12,892
+  turning:           0
+  residual:          2,489
+  time gaps:         470
+  engine load valid: 15,381
+  warnings:
+    - Large time gaps: 470
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Mulching | Field_8
+  rows:              7,934
+  duration:          1713.5 s
+  sampling rate:     4.999999999998863 Hz
+  working:           6,107
+  turning:           0
+  residual:          1,827
+  time gaps:         259
+  engine load valid: 7,934
+  warnings:
+    - Large time gaps: 259
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Ploughing | Field_1
+  rows:              50,027
+  duration:          5704962.8 s
+  sampling rate:     4.999999999993179 Hz
+  working:           31,968
+  turning:           0
+  residual:          18,059
+  time gaps:         2,786
+  engine load valid: 50,027
+  warnings:
+    - Large time gaps: 2786
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Ploughing | Field_2
+  rows:              103,873
+  duration:          84378.5 s
+  sampling rate:     4.99999999998181 Hz
+  working:           95,889
+  turning:           0
+  residual:          7,984
+  time gaps:         2,243
+  engine load valid: 103,873
+  warnings:
+    - Large time gaps: 2243
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Ploughing | Field_3
+  rows:              14,591
+  duration:          4958.6 s
+  sampling rate:     5.0000000000045475 Hz
+  working:           9,388
+  turning:           0
+  residual:          5,203
+  time gaps:         958
+  engine load valid: 14,591
+  warnings:
+    - Large time gaps: 958
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Rotary tilling | Field_1
+  rows:              14,016
+  duration:          14617.3 s
+  sampling rate:     4.99999999998181 Hz
+  working:           9,199
+  turning:           0
+  residual:          4,817
+  time gaps:         878
+  engine load valid: 14,016
+  warnings:
+    - Large time gaps: 878
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Rotary tilling | Field_2
+  rows:              9,867
+  duration:          2292.1 s
+  sampling rate:     4.999999999998863 Hz
+  working:           7,266
+  turning:           0
+  residual:          2,601
+  time gaps:         1,217
+  engine load valid: 9,867
+  warnings:
+    - Large time gaps: 1217
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Rotary tilling | Field_3
+  rows:              7,246
+  duration:          2049.1 s
+  sampling rate:     4.999999999998863 Hz
+  working:           3,555
+  turning:           0
+  residual:          3,691
+  time gaps:         1,009
+  engine load valid: 7,246
+  warnings:
+    - Large time gaps: 1009
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Seed drill combination | Field_1
+  rows:              32,238
+  duration:          27911.6 s
+  sampling rate:     5.0000000000045475 Hz
+  working:           24,405
+  turning:           0
+  residual:          7,833
+  time gaps:         1,209
+  engine load valid: 32,238
+  warnings:
+    - Large time gaps: 1209
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+Fendt 820 | Seedbed combination | Field_1
+  rows:              84,082
+  duration:          26436.7 s
+  sampling rate:     4.99999999998181 Hz
+  working:           58,938
+  turning:           0
+  residual:          25,144
+  time gaps:         3,798
+  engine load valid: 84,082
+  warnings:
+    - Large time gaps: 3798
+    - Estimated sampling rate 5.000 Hz is outside expected ~10 Hz.
+
+==============================================================================
+Files inspected: 143
+==============================================================================
